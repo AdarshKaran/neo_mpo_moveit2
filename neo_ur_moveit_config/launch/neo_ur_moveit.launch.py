@@ -31,24 +31,25 @@
 import os
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument
+from launch.actions import OpaqueFunction
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
-from launch_ros.descriptions import ParameterFile
+from launch_ros.descriptions import ParameterValue, ParameterFile
 from moveit_configs_utils import MoveItConfigsBuilder
 from pathlib import Path
 from neo_ur_moveit_config.launch_common import load_yaml
 from launch.event_handlers import OnProcessExit
+from launch.actions import RegisterEventHandler
 
 def launch_setup(context, *args, **kwargs):
 
     # Initialize Arguments
     robot_typ = str(context.perform_substitution(LaunchConfiguration("robot_type")))
     arm_type = LaunchConfiguration("arm_type")
-    ur_dc = LaunchConfiguration("use_ur_dc")
     gripper_type = LaunchConfiguration("gripper_type")
 
     # General arguments
@@ -57,7 +58,6 @@ def launch_setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration("use_sim_time")
     launch_rviz = LaunchConfiguration("launch_rviz")
     use_gz = LaunchConfiguration("use_gz")
-    use_mock = LaunchConfiguration("use_mock_hardware")
     simulation_enabled = context.perform_substitution(LaunchConfiguration("use_gz")).lower()
 
     if simulation_enabled == "true":
@@ -136,27 +136,113 @@ def launch_setup(context, *args, **kwargs):
         .robot_description(file_path=urdf, mappings={
             "use_gz": use_gz,
             "arm_type": arm_type,
-            "use_ur_dc": ur_dc,
             "gripper_type": gripper_type,
-            "force_abs_paths": use_gz,
-            "use_mock_hardware": use_mock,
-            "mock_sensor_commands": use_mock,
+            "force_abs_paths": use_gz
             })
         .joint_limits(file_path=joint_limits_yaml)
         .to_moveit_configs()
     )
-
+    # Override the trajectory_execution with the modified dictionary
     moveit_config.trajectory_execution = controllers_yaml_dict
 
-    # Start the actual move_group node/action server
+    # Load  ExecuteTaskSolutionCapability so we can execute found solutions in simulation
+    move_group_capabilities = {"capabilities": "move_group/ExecuteTaskSolutionCapability"}
+
     move_group_node = Node(
         package="moveit_ros_move_group",
         executable="move_group",
         output="screen",
         parameters=[
-            moveit_config.to_dict(),
-            {"use_sim_time": use_sim_time},
+        moveit_config.to_dict(),
+        {
+            "use_sim_time": use_sim_time,
+            "publish_robot_description": True,
+            "publish_robot_description_semantic": True,
+            "publish_planning_scene": True,
+        },
+        move_group_capabilities
+        ]
+    )
+
+    gripper_str = context.perform_substitution(gripper_type)
+    prefix_str = context.perform_substitution(prefix)
+    
+    # Define gripper configurations
+    gripper_configs = {
+        '2f_85': {
+            'hand_frame': 'robotiq_85_base_link',
+            'hand_group': 'gripper',
+            'open_pose': 'open',
+            'close_pose': 'close'
+        },
+        '2f_140': {
+            'hand_frame': 'robotiq_140_base_link',
+            'hand_group': 'gripper',
+            'open_pose': 'open',
+            'close_pose': 'close'
+        },
+        'epick': {
+            'hand_frame': 'robotiq_epick_base_link',
+            'hand_group': 'gripper',
+            'open_pose': 'open',
+            'close_pose': 'close'
+        },
+        '': {
+            'hand_frame': f'{prefix_str}wrist_3_link',
+            'hand_group': '',
+            'open_pose': '',
+            'close_pose': ''
+        }
+    }
+    
+    gripper_config = gripper_configs.get(gripper_str, gripper_configs[''])
+    
+    mtc_pick_place_node = Node(
+        package='neo_ur_moveit_config',
+        executable='mtc_pick_place_node',
+        name='mtc_pick_place_node',
+        condition=IfCondition(LaunchConfiguration('enable_mtc')),
+        parameters=[
+            moveit_config.robot_description,
+            moveit_config.robot_description_semantic,
+            moveit_config.robot_description_kinematics,
+            moveit_config.joint_limits,
+            moveit_config.planning_pipelines,
+            {
+                'arm_group_name': 'ur_manipulator',
+                'hand_group_name': gripper_config['hand_group'],
+                'eef_name': 'endeffector',
+                'hand_frame': gripper_config['hand_frame'],
+                
+                # Object and scene configuration
+                'target_object': 'small_cube',
+                'table_reference_frame': 'base_link',
+                'table_object_name': 'simple_table',
+                'surface_link': 'table_link',
+                
+                # Place position
+                'place_pose_x': 1.0,
+                'place_pose_y': 0.2,
+                'place_pose_z': 0.7,
+                
+                # Poses
+                'ready_pose': 'up',
+                'open_pose': gripper_config['open_pose'],
+                'close_pose': gripper_config['close_pose'],
+                
+                # Additional parameters
+                'gripper_type': gripper_str,
+                'use_sim_time': use_sim_time,
+                
+                # Enable introspection
+                'publish_planning_scene': True,
+                'publish_geometry_updates': True,
+                'publish_state_updates': True,
+                'publish_transforms_updates': True,
+            }
         ],
+        output='screen',
+        emulate_tty=True,
     )
 
     # rviz with moveit configuration
@@ -191,7 +277,7 @@ def launch_setup(context, *args, **kwargs):
     handler = RegisterEventHandler(
         OnProcessExit(
             target_action=wait_robot_description,
-            on_exit=[move_group_node, rviz_node],
+            on_exit=[move_group_node, rviz_node, mtc_pick_place_node],
         )
     )
 
@@ -207,11 +293,10 @@ def generate_launch_description():
             DeclareLaunchArgument(
             'robot_type',
             default_value='mpo_700',
-            choices=['', 'mpo_700', 'mpo_500'],
+            choices=['', 'mpo_700', 'mpo_500', 'mp_400', 'mp_500'],
             description='Robot Types\n\t'
         )
     )
-
     declared_arguments.append(
         DeclareLaunchArgument(
             'arm_type', default_value='',
@@ -219,14 +304,6 @@ def generate_launch_description():
             description='Arm Types - Supported Robots [mpo-700, mpo-500]\n\t'        
         )
     )
-
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            'use_ur_dc', default_value='False',
-            description='Set this argument to True if you have an UR arm with DC variant'
-        )
-    )
-
     declared_arguments.append(
         DeclareLaunchArgument(
             'gripper_type', default_value='',
@@ -234,7 +311,6 @@ def generate_launch_description():
             description='Gripper Types - Supported Robots [mpo-700, mpo-500]\n\t'
         )
     )
-
     declared_arguments.append(
         DeclareLaunchArgument(
             "moveit_config_package",
@@ -243,11 +319,10 @@ def generate_launch_description():
             '\t is not set, it enables use of a custom moveit config.',
         )
     )
-
     declared_arguments.append(
         DeclareLaunchArgument(
             "use_sim_time",
-            default_value="False",
+            default_value="false",
             description='Make MoveIt to use simulation time.\n'
               '\t This is needed for the trajectory planing in simulation.',
         )
@@ -257,15 +332,16 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "prefix",
             default_value='',
-            description='Prefix of the joint names in controllers configuration.\n'
-            '\t (same as "arm_type" argument)',
+            description='Prefix of the joint names. If changed,\n'
+            '\t the joint names in the controllers\n'
+            '\t configuration must also be updated.',
         )
     )
 
     declared_arguments.append(
         DeclareLaunchArgument(
             "use_gz",
-            default_value="False",
+            default_value="false",
             description="Whether to enable Gazebo simulation.",
         )
     )
@@ -273,13 +349,21 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "use_mock_hardware",
-            default_value="False",
+            default_value="false",
             description="Indicate whether robot is running with mock hardware mirroring command to its states.",
         )
     )
 
     declared_arguments.append(
-        DeclareLaunchArgument("launch_rviz", default_value="True", description="Launch RViz?")
+        DeclareLaunchArgument("launch_rviz", default_value="true", description="Launch RViz?")
+    )
+
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'enable_mtc', 
+            default_value='false',
+            description='Enable MTC pick and place node'
+        )
     )
 
     return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])

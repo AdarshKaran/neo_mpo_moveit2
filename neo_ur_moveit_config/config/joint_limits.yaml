@@ -23,3 +23,6 @@ joint_limits:
   $(var prefix)wrist_3_joint:
     has_acceleration_limits: true
     max_acceleration: 5.0
+  robotiq_85_left_knuckle_joint:
+    has_acceleration_limits: true
+    max_acceleration: 5.0

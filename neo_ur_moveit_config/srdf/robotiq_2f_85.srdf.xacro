@@ -3,12 +3,27 @@
     This is a format for representing semantic information about the robot structure.
     A URDF file must exist for this robot as well, where the joints and the links that are referenced are defined
 -->
-<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mpo_700">
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="2f_85">
 
   <xacro:arg name="prefix" default=""/>
   <xacro:property name="prefix_value" value="$(arg prefix)"/>
 
   <xacro:macro name="robotiq_2f_85">
+
+    <!-- EE group for MTC-->
+    <group name="gripper">
+      <joint name="robotiq_85_left_knuckle_joint"/>
+    </group>
+
+    <group_state name="open" group="gripper">
+      <joint name="robotiq_85_left_knuckle_joint" value="0.0" />
+    </group_state>
+
+    <group_state name="close" group="gripper">
+      <joint name="robotiq_85_left_knuckle_joint" value="0.8" />
+    </group_state>
+
+    <end_effector name="endeffector" group="gripper" parent_link="${prefix_value}wrist_3_link"/>
 
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
     <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_finger_link" reason="Never"/>
