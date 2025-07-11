@@ -4,7 +4,7 @@
   <name>neo_ur_moveit_config</name>
   <version>2.2.10</version>
   <description>
-     Moveit package for mobile manipulator MMO 700
+     Moveit package for mobile manipulator MMO 700 with MTC support
   </description>
   <maintainer email="ros@neobotix.de">Pradheep Padmanabhan</maintainer>
 
@@ -31,6 +31,16 @@
   <exec_depend>xacro</exec_depend>
   <exec_depend>neo_mpo_700-2</exec_depend>
   <exec_depend>neo_mpo_500-2</exec_depend>
+
+  <depend>moveit_task_constructor_core</depend>
+  <depend>moveit_task_constructor_msgs</depend>
+  <depend>moveit_ros_planning_interface</depend>
+  <depend>rclcpp_action</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>shape_msgs</depend>
+  <depend>moveit_msgs</depend>
+  <depend>control_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
