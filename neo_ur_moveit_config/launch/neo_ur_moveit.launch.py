@@ -214,15 +214,14 @@ def launch_setup(context, *args, **kwargs):
                 'hand_frame': gripper_config['hand_frame'],
                 
                 # Object and scene configuration
-                'target_object': 'small_cube',
+                'target_object': 'can_1',
                 'table_reference_frame': 'base_link',
                 'table_object_name': 'simple_table',
-                'surface_link': 'table_link',
                 
-                # Place position
-                'place_pose_x': 0.7,
-                'place_pose_y': 0.3,
-                'place_pose_z': 0.725,
+                # Place position (inside storage bin - center of bin)
+                'place_pose_x': 0.8,
+                'place_pose_y': 0.15,
+                'place_pose_z': 0.7725,
                 
                 # Poses
                 'ready_pose': 'up',

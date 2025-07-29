@@ -35,6 +35,11 @@ static const rclcpp::Logger LOGGER = rclcpp::get_logger("mtc_pick_place_node");
 namespace mtc = moveit::task_constructor;
 
 /* ========================================================================== */
+/*                           ENUM DECLARATION                                 */
+/* ========================================================================== */
+enum class GraspOrientation { Vertical, Horizontal };
+
+/* ========================================================================== */
 /*                           CLASS DECLARATION                                */
 /* ========================================================================== */
 class MTCPickPlaceNode
@@ -49,7 +54,7 @@ public:
 private:
   /* ----- helpers & members ------------------------------------------------ */
   mtc::Task createTask();
-  Eigen::Isometry3d graspOffset() const;
+  Eigen::Isometry3d graspOffset(GraspOrientation orientation) const;
   std::vector<std::string> allLinks(const std::string& group,
                                     const mtc::Task& task) const;
 
@@ -75,11 +80,11 @@ MTCPickPlaceNode::MTCPickPlaceNode(const rclcpp::NodeOptions& options)
   node_->declare_parameter("hand_group_name",  "gripper");
   node_->declare_parameter("eef_name",         "endeffector");
   node_->declare_parameter("hand_frame",       "robotiq_85_base_link");
-  node_->declare_parameter("target_object",    "small_cube");
+  node_->declare_parameter("target_object",    "can_1");
   node_->declare_parameter("table_reference_frame", "base_link");
-  node_->declare_parameter("place_pose_x", 0.5);
+  node_->declare_parameter("place_pose_x", 0.8);
   node_->declare_parameter("place_pose_y", 0.0);
-  node_->declare_parameter("place_pose_z", 0.05);
+  node_->declare_parameter("place_pose_z", 0.875);
   node_->declare_parameter("ready_pose",  "up");
   node_->declare_parameter("open_pose",   "open");
   node_->declare_parameter("close_pose",  "close");
@@ -117,43 +122,125 @@ void MTCPickPlaceNode::setupPlanningScene()
   moveit::planning_interface::PlanningSceneInterface psi;
   rclcpp::sleep_for(std::chrono::seconds(1));
 
+  // Updated table to match your world
   moveit_msgs::msg::CollisionObject table;
   table.header.frame_id = table_reference_frame_;
   table.id = "simple_table";
   shape_msgs::msg::SolidPrimitive tbl;
-  tbl.type = tbl.BOX; tbl.dimensions = {0.8, 0.6, 0.7};
+  tbl.type = tbl.BOX; tbl.dimensions = {0.8, 1.2, 0.7}; // Updated dimensions
   geometry_msgs::msg::Pose tbl_pose;
   tbl_pose.orientation.w = 1.0;
-  tbl_pose.position.x = 0.8; tbl_pose.position.z = 0.35;
+  tbl_pose.position.x = 0.8; tbl_pose.position.z = 0.35; // Updated position
   table.primitives.push_back(tbl);
   table.primitive_poses.push_back(tbl_pose);
   table.operation = table.ADD;
 
-  moveit_msgs::msg::CollisionObject cube;
-  cube.header.frame_id = table_reference_frame_;
-  cube.id = target_object_;
-  shape_msgs::msg::SolidPrimitive c; c.type = c.BOX;
-  c.dimensions = {0.05, 0.05, 0.05};
-  geometry_msgs::msg::Pose c_pose;
-  c_pose.orientation.w = 1.0;
-  c_pose.position.x = 0.8; c_pose.position.z = 0.725;
-  cube.primitives.push_back(c);
-  cube.primitive_poses.push_back(c_pose);
-  cube.operation = cube.ADD;
+  // Bin walls instead of single storage bin
+  // Front wall
+  moveit_msgs::msg::CollisionObject bin_front_wall;
+  bin_front_wall.header.frame_id = table_reference_frame_;
+  bin_front_wall.id = "bin_front_wall";
+  shape_msgs::msg::SolidPrimitive front_wall;
+  front_wall.type = front_wall.BOX; 
+  front_wall.dimensions = {0.6, 0.02, 0.30};
+  geometry_msgs::msg::Pose front_wall_pose;
+  front_wall_pose.orientation.w = 1.0;
+  front_wall_pose.position.x = 0.8; front_wall_pose.position.y = 0.0; front_wall_pose.position.z = 0.85;
+  bin_front_wall.primitives.push_back(front_wall);
+  bin_front_wall.primitive_poses.push_back(front_wall_pose);
+  bin_front_wall.operation = bin_front_wall.ADD;
 
-  psi.applyCollisionObjects({table, cube});
+  // Back wall
+  moveit_msgs::msg::CollisionObject bin_back_wall;
+  bin_back_wall.header.frame_id = table_reference_frame_;
+  bin_back_wall.id = "bin_back_wall";
+  shape_msgs::msg::SolidPrimitive back_wall;
+  back_wall.type = back_wall.BOX; 
+  back_wall.dimensions = {0.6, 0.02, 0.30};
+  geometry_msgs::msg::Pose back_wall_pose;
+  back_wall_pose.orientation.w = 1.0;
+  back_wall_pose.position.x = 0.8; back_wall_pose.position.y = 0.30; back_wall_pose.position.z = 0.85;
+  bin_back_wall.primitives.push_back(back_wall);
+  bin_back_wall.primitive_poses.push_back(back_wall_pose);
+  bin_back_wall.operation = bin_back_wall.ADD;
+
+  // Left wall
+  moveit_msgs::msg::CollisionObject bin_left_wall;
+  bin_left_wall.header.frame_id = table_reference_frame_;
+  bin_left_wall.id = "bin_left_wall";
+  shape_msgs::msg::SolidPrimitive left_wall;
+  left_wall.type = left_wall.BOX; 
+  left_wall.dimensions = {0.02, 0.30, 0.30};
+  geometry_msgs::msg::Pose left_wall_pose;
+  left_wall_pose.orientation.w = 1.0;
+  left_wall_pose.position.x = 0.50; left_wall_pose.position.y = 0.15; left_wall_pose.position.z = 0.85;
+  bin_left_wall.primitives.push_back(left_wall);
+  bin_left_wall.primitive_poses.push_back(left_wall_pose);
+  bin_left_wall.operation = bin_left_wall.ADD;
+
+  // Right wall
+  moveit_msgs::msg::CollisionObject bin_right_wall;
+  bin_right_wall.header.frame_id = table_reference_frame_;
+  bin_right_wall.id = "bin_right_wall";
+  shape_msgs::msg::SolidPrimitive right_wall;
+  right_wall.type = right_wall.BOX; 
+  right_wall.dimensions = {0.02, 0.30, 0.30};
+  geometry_msgs::msg::Pose right_wall_pose;
+  right_wall_pose.orientation.w = 1.0;
+  right_wall_pose.position.x = 1.10; right_wall_pose.position.y = 0.15; right_wall_pose.position.z = 0.85;
+  bin_right_wall.primitives.push_back(right_wall);
+  bin_right_wall.primitive_poses.push_back(right_wall_pose);
+  bin_right_wall.operation = bin_right_wall.ADD;
+
+  // Coke Can 1 (target object) - updated dimensions and position
+  moveit_msgs::msg::CollisionObject can_1;
+  can_1.header.frame_id = table_reference_frame_;
+  can_1.id = "can_1";
+  shape_msgs::msg::SolidPrimitive c1; 
+  c1.type = c1.CYLINDER;
+  c1.dimensions = {0.145, 0.04}; // Updated: height 0.145m, diameter 0.04m
+  geometry_msgs::msg::Pose c1_pose;
+  c1_pose.orientation.w = 1.0;
+  c1_pose.position.x = 0.7; c1_pose.position.y = -0.2; c1_pose.position.z = 0.7725; // Updated position
+  can_1.primitives.push_back(c1);
+  can_1.primitive_poses.push_back(c1_pose);
+  can_1.operation = can_1.ADD;
+
+  // Coke Can 2 - updated dimensions and position
+  moveit_msgs::msg::CollisionObject can_2;
+  can_2.header.frame_id = table_reference_frame_;
+  can_2.id = "can_2";
+  shape_msgs::msg::SolidPrimitive c2; 
+  c2.type = c2.CYLINDER;
+  c2.dimensions = {0.145, 0.04}; // Updated: height 0.145m, diameter 0.04m
+  geometry_msgs::msg::Pose c2_pose;
+  c2_pose.orientation.w = 1.0;
+  c2_pose.position.x = 0.9; c2_pose.position.y = -0.4; c2_pose.position.z = 0.7725; // Updated position
+  can_2.primitives.push_back(c2);
+  can_2.primitive_poses.push_back(c2_pose);
+  can_2.operation = can_2.ADD;
+
+  psi.applyCollisionObjects({table, bin_front_wall, bin_back_wall, bin_left_wall, bin_right_wall, can_1, can_2});
   RCLCPP_INFO(LOGGER, "Added collision objects to planning scene");
 }
 
 /* ---------- graspOffset, allLinks--------------------------- */
-Eigen::Isometry3d MTCPickPlaceNode::graspOffset() const
+
+Eigen::Isometry3d MTCPickPlaceNode::graspOffset(GraspOrientation orientation) const
 {
   Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
-  Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()));
-  T.linear() = q.toRotationMatrix();
-  T.translation() = Eigen::Vector3d(0, 0, 0.15);
+  if (orientation == GraspOrientation::Vertical) {
+    Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()));
+    T.linear() = q.toRotationMatrix();
+    T.translation() = Eigen::Vector3d(0, 0, 0.24); // Increased offset for better clearance
+  } else { // Horizontal
+    Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI/2, Eigen::Vector3d::UnitX()));
+    T.linear() = q.toRotationMatrix();
+    T.translation() = Eigen::Vector3d(0, 0, 0.18); // Increased offset for better clearance
+  }
   return T;
 }
+
 std::vector<std::string>
 MTCPickPlaceNode::allLinks(const std::string& group, const mtc::Task& task) const
 {
@@ -240,42 +327,80 @@ mtc::Task MTCPickPlaceNode::createTask()
         stage->properties().set("marker_ns", "approach_object");
         stage->properties().set("link", hand_frame_);
         stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-        stage->setMinMaxDistance(0.01, 0.15);
+        stage->setMinMaxDistance(0.05, 0.20); // Increased distance for better approach
 
-        // Set hand forward direction
+        // Set hand approach direction - approach from the side for cylindrical objects
         geometry_msgs::msg::Vector3Stamped vec;
         vec.header.frame_id = hand_frame_;
-        vec.vector.z = -1.0; // or -1?
+        vec.vector.x = -1.0; // Approach from the side instead of from above
         stage->setDirection(vec);
         grasp->insert(std::move(stage));
 
       }
 
-      /* sample grasp pose + IK */
+/* ========== GRASP ORIENTATION FALLBACK ========== */
+{
+  auto grasp_fallback = std::make_unique<mtc::Fallbacks>("grasp orientation fallback");
+grasp->properties().exposeTo(
+   grasp_fallback->properties(),
+   { "eef", "group", "ik_frame" }
+);
+  grasp_fallback->properties().configureInitFrom(mtc::Stage::PARENT,
+                                              { "eef", "group", "ik_frame" });
+                                              
+  // --- vertical grasp
+  {
+    auto gen_vert = std::make_unique<mtc::stages::GenerateGraspPose>("generate vertical grasp");
+    gen_vert->properties().configureInitFrom(mtc::Stage::PARENT);
+    gen_vert->properties().set("marker_ns", "grasp_pose");         // your original marker_ns
+    gen_vert->setPreGraspPose(open_pose_);                          
+    gen_vert->setObject(target_object_);                            
+    gen_vert->setAngleDelta(M_PI / 12);                            // your original angle delta
+    gen_vert->setMonitoredStage(current_state_ptr);                
+
+    auto ik_vert = std::make_unique<mtc::stages::ComputeIK>("vertical grasp IK", std::move(gen_vert));
+    ik_vert->setMaxIKSolutions(8);
+    ik_vert->setMinSolutionDistance(1.0);
+    ik_vert->setIKFrame(graspOffset(GraspOrientation::Vertical), hand_frame_);
+    ik_vert->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
+    ik_vert->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
+
+    grasp_fallback->insert(std::move(ik_vert));
+  }
+
+  // --- horizontal grasp
+  {
+    auto gen_horiz = std::make_unique<mtc::stages::GenerateGraspPose>("generate horizontal grasp");
+    gen_horiz->properties().configureInitFrom(mtc::Stage::PARENT);
+    gen_horiz->properties().set("marker_ns", "grasp_pose");       // same marker_ns
+    gen_horiz->setPreGraspPose(open_pose_);
+    gen_horiz->setObject(target_object_);
+    gen_horiz->setAngleDelta(M_PI / 12);                          // same angle delta
+    gen_horiz->setMonitoredStage(current_state_ptr);
+
+    auto ik_horiz = std::make_unique<mtc::stages::ComputeIK>("horizontal grasp IK", std::move(gen_horiz));
+    ik_horiz->setMaxIKSolutions(8);
+    ik_horiz->setMinSolutionDistance(1.0);
+    ik_horiz->setIKFrame(graspOffset(GraspOrientation::Horizontal), hand_frame_);
+    ik_horiz->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
+    ik_horiz->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
+
+    grasp_fallback->insert(std::move(ik_horiz));
+  }
+
+  // insert the fallback into your pick container
+  grasp->insert(std::move(grasp_fallback));
+}
+
+
+      /* allow collision (object,table) */
       {
-
-        auto stage = 
-        std::make_unique<mtc::stages::GenerateGraspPose>("generate grasp pose");
-        stage->properties().configureInitFrom(mtc::Stage::PARENT);
-        stage->properties().set("marker_ns", "grasp_pose");
-        stage->setPreGraspPose(open_pose_);
-        stage->setObject(target_object_);
-        stage->setAngleDelta(M_PI / 12);
-        stage->setMonitoredStage(current_state_ptr);  // Hook into current state
-
-      // Compute IK
-        auto wrapper =
-        std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
-        wrapper->setMaxIKSolutions(8);
-        wrapper->setMinSolutionDistance(1.0);
-        wrapper->setIKFrame(graspOffset(), hand_frame_);
-        wrapper->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
-        wrapper->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
-        grasp->insert(std::move(wrapper));
-
+        auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision (object,table)");
+        stage->allowCollisions(target_object_, std::vector<std::string>{"simple_table"}, true);
+        grasp->insert(std::move(stage));
       }
 
-      /* allow collision */
+      /* allow collision (hand,object) */
       {
         auto stage =
         std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision (hand,object)");
@@ -299,7 +424,7 @@ mtc::Task MTCPickPlaceNode::createTask()
       {
         auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");
         stage->attachObject(target_object_, hand_frame_);
-        stage->allowCollisions(target_object_, {"simple_table"}, true);
+        stage->allowCollisions(target_object_, std::vector<std::string>{"simple_table", "bin_front_wall", "bin_back_wall", "bin_left_wall", "bin_right_wall"}, true);
         attach_object_stage = stage.get();
         grasp->insert(std::move(stage));
       }
@@ -321,14 +446,33 @@ mtc::Task MTCPickPlaceNode::createTask()
         stage->setDirection(vec);
         grasp->insert(std::move(stage));
       }
-        {
-        auto s = std::make_unique<mtc::stages::ModifyPlanningScene>(
-            "forbid collision (hand,support)");
-        s->allowCollisions("simple_table", allLinks(hand_group_name_, task), false);
-        grasp->insert(std::move(s));
-        }
+
       task.add(std::move(grasp));
     }
+    // // —— forbid collisions with the bin walls ——
+    // {
+    //   auto forbid_walls = std::make_unique<mtc::stages::ModifyPlanningScene>("forbid collision (hand,walls)");
+    //   auto hand_links = task.getRobotModel()
+    //                       ->getJointModelGroup(hand_group_name_)
+    //                       ->getLinkModelNamesWithCollisionGeometry();
+    //   for (const auto* wall_id : {"bin_front_wall", "bin_back_wall", "bin_left_wall", "bin_right_wall"}) {
+    //     forbid_walls->allowCollisions(wall_id, hand_links, false);
+    //   }
+    //   task.add(std::move(forbid_walls));
+    // }
+    // forbid collisions between the can and each wall
+auto forbid_object_walls = std::make_unique<mtc::stages::ModifyPlanningScene>(
+    "forbid collision (object,walls)");
+for (const auto* wall_id : {"bin_front_wall",
+                            "bin_back_wall",
+                            "bin_left_wall",
+                            "bin_right_wall"}) {
+  // target_object_ is e.g. "can_1"
+  forbid_object_walls->allowCollisions(target_object_,
+                                       std::vector<std::string>{wall_id},
+                                       /* allow = */ false);
+}
+task.add(std::move(forbid_object_walls));
 
     /* ---------------- move to place ---------------- */
     {
@@ -362,30 +506,72 @@ mtc::Task MTCPickPlaceNode::createTask()
       //   place->insert(std::move(stage));
       // }
 
-      /* generate place pose */
+      /* ========== PLACE ORIENTATION FALLBACK ========== */
       {
-        auto stage = std::make_unique<mtc::stages::GeneratePlacePose>("generate place pose");
-        stage->properties().configureInitFrom(mtc::Stage::PARENT);
-        stage->properties().set("marker_ns", "place_pose");
-        stage->setObject(target_object_);
+        auto place_fallback = std::make_unique<mtc::Fallbacks>("place orientation fallback");
+        place->properties().exposeTo(
+           place_fallback->properties(),
+           { "eef", "group", "ik_frame" }
+        );
+        place_fallback->properties().configureInitFrom(mtc::Stage::PARENT,
+                                                    { "eef", "group", "ik_frame" });
+                                                        
+        // --- vertical place
+        {
+          auto gen_vert = std::make_unique<mtc::stages::GeneratePlacePose>("generate vertical place pose");
+          gen_vert->properties().configureInitFrom(mtc::Stage::PARENT);
+          gen_vert->properties().set("marker_ns", "place_pose");
+          gen_vert->setObject(target_object_);
 
-        geometry_msgs::msg::PoseStamped target_pose;
-        target_pose.header.frame_id = table_reference_frame_;
-        target_pose.pose.position.x = place_pose_x_;
-        target_pose.pose.position.y = place_pose_y_;
-        target_pose.pose.position.z = place_pose_z_ + 0.025;
-        target_pose.pose.orientation.w = 1.0;
-        stage->setPose(target_pose);
-        stage->setMonitoredStage(attach_object_stage);
-        
-        // Compute IK
-        auto wrapper = std::make_unique<mtc::stages::ComputeIK>("place pose IK", std::move(stage));
-        wrapper->setMaxIKSolutions(2);
-        wrapper->setMinSolutionDistance(1.0);
-        wrapper->setIKFrame(graspOffset(), hand_frame_);
-        wrapper->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
-        wrapper->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
-        place->insert(std::move(wrapper));
+          geometry_msgs::msg::PoseStamped target_pose;
+          target_pose.header.frame_id = table_reference_frame_;
+          target_pose.pose.position.x = place_pose_x_;
+          target_pose.pose.position.y = place_pose_y_;
+          target_pose.pose.position.z = place_pose_z_;
+          target_pose.pose.orientation.w = 1.0;
+          gen_vert->setPose(target_pose);
+          gen_vert->setMonitoredStage(attach_object_stage);
+          
+          // Compute IK
+          auto ik_vert = std::make_unique<mtc::stages::ComputeIK>("vertical place IK", std::move(gen_vert));
+          ik_vert->setMaxIKSolutions(2);
+          ik_vert->setMinSolutionDistance(1.0);
+          ik_vert->setIKFrame(graspOffset(GraspOrientation::Vertical), hand_frame_);
+          ik_vert->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
+          ik_vert->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
+
+          place_fallback->insert(std::move(ik_vert));
+        }
+
+        // --- horizontal place
+        {
+          auto gen_horiz = std::make_unique<mtc::stages::GeneratePlacePose>("generate horizontal place pose");
+          gen_horiz->properties().configureInitFrom(mtc::Stage::PARENT);
+          gen_horiz->properties().set("marker_ns", "place_pose");
+          gen_horiz->setObject(target_object_);
+
+          geometry_msgs::msg::PoseStamped target_pose;
+          target_pose.header.frame_id = table_reference_frame_;
+          target_pose.pose.position.x = place_pose_x_;
+          target_pose.pose.position.y = place_pose_y_;
+          target_pose.pose.position.z = place_pose_z_ + 0.06; // Place can inside bin
+          target_pose.pose.orientation.w = 1.0;
+          gen_horiz->setPose(target_pose);
+          gen_horiz->setMonitoredStage(attach_object_stage);
+          
+          // Compute IK
+          auto ik_horiz = std::make_unique<mtc::stages::ComputeIK>("horizontal place IK", std::move(gen_horiz));
+          ik_horiz->setMaxIKSolutions(2);
+          ik_horiz->setMinSolutionDistance(1.0);
+          ik_horiz->setIKFrame(graspOffset(GraspOrientation::Horizontal), hand_frame_);
+          ik_horiz->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
+          ik_horiz->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
+
+          place_fallback->insert(std::move(ik_horiz));
+        }
+
+        // insert the fallback into your place container
+        place->insert(std::move(place_fallback));
       }
 
       /* open hand */
