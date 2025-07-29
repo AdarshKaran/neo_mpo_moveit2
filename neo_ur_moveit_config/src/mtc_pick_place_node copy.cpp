@@ -227,7 +227,7 @@ public:
 
   rclcpp::node_interfaces::NodeBaseInterface::SharedPtr getNodeBaseInterface();
   void setupPlanningScene();
-  void doMultipleTasks();
+  void doMultipleTasks(bool sequential_mode = true);
 
   /* ----- helpers & members ------------------------------------------------ */
   Eigen::Isometry3d graspOffset(GraspOrientation orientation) const;
@@ -266,6 +266,7 @@ MTCPickPlaceNode::MTCPickPlaceNode(const rclcpp::NodeOptions& options)
   node_->declare_parameter("ready_pose",  "up");
   node_->declare_parameter("open_pose",   "open");
   node_->declare_parameter("close_pose",  "close");
+  node_->declare_parameter("sequential_mode", true);
 
   arm_group_name_        = node_->get_parameter("arm_group_name").as_string();
   hand_group_name_       = node_->get_parameter("hand_group_name").as_string();
@@ -279,7 +280,8 @@ MTCPickPlaceNode::MTCPickPlaceNode(const rclcpp::NodeOptions& options)
   ready_pose_            = node_->get_parameter("ready_pose").as_string();
   open_pose_             = node_->get_parameter("open_pose").as_string();
   close_pose_            = node_->get_parameter("close_pose").as_string();
-
+  bool sequential = node_->get_parameter("sequential_mode").as_bool();
+  
   RCLCPP_INFO(LOGGER, "MTC Pick Place Node Starting");
 
 }
@@ -703,6 +705,116 @@ class MTCTaskBuilder
 public:
   MTCTaskBuilder(const MTCPickPlaceNode* node) : node_(node) {}
   
+  mtc::Task buildSequentialPickPlaceTask(const std::vector<ConfigurationManager::TaskConfig>& task_configs)
+  {
+    mtc::Task task;
+    task.stages()->setName("sequential_pick_place_task");
+    task.loadRobotModel(node_->getNode());
+    
+    task.setProperty("group", node_->getArmGroupName());
+    task.setProperty("eef", node_->getEefName());
+    task.setProperty("ik_frame", node_->getHandFrame());
+    
+    mtc::Stage* current_state_ptr = nullptr;
+    
+    // Current state
+    {
+      auto stage_state_current = std::make_unique<mtc::stages::CurrentState>("current");
+      current_state_ptr = stage_state_current.get();
+      task.add(std::move(stage_state_current));
+    }
+    
+    // Setup planners
+    auto sampling_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_->getNode());
+    auto interpolation_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
+    
+    // Tune these for speed
+    sampling_planner->setMaxVelocityScalingFactor(0.1);
+    sampling_planner->setMaxAccelerationScalingFactor(0.1);
+    interpolation_planner->setMaxVelocityScalingFactor(0.2);
+    interpolation_planner->setMaxAccelerationScalingFactor(0.2);
+    
+    // Initial open hand
+    {
+      auto stage_open_hand = std::make_unique<mtc::stages::MoveTo>("initial open hand", interpolation_planner);
+      stage_open_hand->setGroup(node_->getHandGroupName());
+      stage_open_hand->setGoal(node_->getOpenPose());
+      task.add(std::move(stage_open_hand));
+    }
+    
+    // Process each object sequentially
+    for (size_t i = 0; i < task_configs.size(); ++i) {
+      const auto& task_config = task_configs[i];
+      std::string task_prefix = "task_" + std::to_string(i + 1) + "_" + task_config.object_id;
+      
+      mtc::Stage* attach_object_stage = nullptr;
+      
+      // Move to pick (only for first object, others continue from previous place)
+      if (i == 0) {
+        auto stage_move_to_pick = std::make_unique<mtc::stages::Connect>(
+            task_prefix + "_move_to_pick",
+            mtc::stages::Connect::GroupPlannerVector{ { node_->getArmGroupName(), sampling_planner } });
+        stage_move_to_pick->setTimeout(5.0);
+        stage_move_to_pick->properties().configureInitFrom(mtc::Stage::PARENT);
+        task.add(std::move(stage_move_to_pick));
+      } else {
+        // For subsequent objects, add a direct move from place to next pick
+        auto stage_move_to_next_pick = std::make_unique<mtc::stages::Connect>(
+            task_prefix + "_move_to_next_pick",
+            mtc::stages::Connect::GroupPlannerVector{ { node_->getArmGroupName(), sampling_planner } });
+        stage_move_to_next_pick->setTimeout(5.0);
+        stage_move_to_next_pick->properties().configureInitFrom(mtc::Stage::PARENT);
+        task.add(std::move(stage_move_to_next_pick));
+      }
+      
+      // Pick container
+      auto pick_container = PickTaskFactory::createPickContainer(
+          node_, task_config.object_id, task_config.grasp, 
+          current_state_ptr, attach_object_stage, task);
+      pick_container->setName(task_prefix + "_pick");
+      task.add(std::move(pick_container));
+      
+      // Forbid wall collisions
+      {
+        auto forbid_object_walls = std::make_unique<mtc::stages::ModifyPlanningScene>(
+            task_prefix + "_forbid_collision_walls");
+        for (const auto* wall_id : {"bin_front_wall", "bin_back_wall", "bin_left_wall", "bin_right_wall"}) {
+          forbid_object_walls->allowCollisions(task_config.object_id, std::vector<std::string>{wall_id}, false);
+        }
+        task.add(std::move(forbid_object_walls));
+      }
+      
+      // Move to place
+      {
+        auto stage_move_to_place = std::make_unique<mtc::stages::Connect>(
+            task_prefix + "_move_to_place",
+            mtc::stages::Connect::GroupPlannerVector{ { node_->getArmGroupName(), sampling_planner } });
+        stage_move_to_place->setTimeout(5.0);
+        stage_move_to_place->properties().configureInitFrom(mtc::Stage::PARENT);
+        task.add(std::move(stage_move_to_place));
+      }
+      
+      // Place container
+      std::vector<double> place_pos = {task_config.place_x, task_config.place_y, task_config.place_z};
+      auto place_container = PlaceTaskFactory::createPlaceContainer(
+          node_, task_config.object_id, place_pos, 
+          task_config.grasp, attach_object_stage, task);
+      place_container->setName(task_prefix + "_place");
+      task.add(std::move(place_container));
+    }
+    
+    // Only return home at the very end
+    {
+      auto stage = std::make_unique<mtc::stages::MoveTo>("final_return_home", interpolation_planner);
+      stage->setGroup(node_->getArmGroupName());
+      stage->setGoal(node_->getReadyPose());
+      task.add(std::move(stage));
+    }
+    
+    return task;
+  }
+
+
   mtc::Task buildPickPlaceTask(const ConfigurationManager::TaskConfig& task_config)
   {
     mtc::Task task;
@@ -728,11 +840,11 @@ public:
     auto interpolation_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
     
     // Tune these for horizontal speed
-    sampling_planner->setMaxVelocityScalingFactor(0.4);
-    sampling_planner->setMaxAccelerationScalingFactor(0.4);
+    sampling_planner->setMaxVelocityScalingFactor(0.2);
+    sampling_planner->setMaxAccelerationScalingFactor(0.2);
     // return to home speed
-    interpolation_planner->setMaxVelocityScalingFactor(0.6);
-    interpolation_planner->setMaxAccelerationScalingFactor(0.6);
+    interpolation_planner->setMaxVelocityScalingFactor(0.2);
+    interpolation_planner->setMaxAccelerationScalingFactor(0.2);
     
     // Open hand
     {
@@ -802,39 +914,74 @@ private:
 /* ========================================================================== */
 /*                   DO MULTIPLE TASKS                                         */
 /* ========================================================================== */
-void MTCPickPlaceNode::doMultipleTasks()
+void MTCPickPlaceNode::doMultipleTasks(bool sequential_mode)
 {
   auto& config = ConfigurationManager::getInstance();
   MTCTaskBuilder builder(this);
-  
-  for (const auto& task_config : config.getTasks()) {
-    RCLCPP_INFO(LOGGER, "Executing task for object: %s", task_config.object_id.c_str());
+
+  const auto& task_configs = config.getTasks();
+
+    if (sequential_mode) {
+    // Sequential mode - one big task
+    RCLCPP_INFO(LOGGER, "Executing SEQUENTIAL pick-place for %zu objects", task_configs.size());
     
-    mtc::Task task = builder.buildPickPlaceTask(task_config);
+    mtc::Task sequential_task = builder.buildSequentialPickPlaceTask(task_configs);
     
     try { 
-      task.init(); 
+      sequential_task.init(); 
     }
     catch (mtc::InitStageException& e) {
-      RCLCPP_ERROR_STREAM(LOGGER, "Task init failed for " << task_config.object_id << ": " << e); 
-      continue;
+      RCLCPP_ERROR_STREAM(LOGGER, "Sequential task init failed: " << e); 
+      return;
     }
     
-    if (!task.plan(5)) {
-      RCLCPP_ERROR(LOGGER, "Task planning failed for %s", task_config.object_id.c_str()); 
-      continue;
+    if (!sequential_task.plan(10)) {
+      RCLCPP_ERROR(LOGGER, "Sequential task planning failed"); 
+      return;
     }
     
-    task.introspection().publishSolution(*task.solutions().front());
-    auto result = task.execute(*task.solutions().front());
+    sequential_task.introspection().publishSolution(*sequential_task.solutions().front());
+    auto result = sequential_task.execute(*sequential_task.solutions().front());
     
     if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
-      RCLCPP_ERROR(LOGGER, "Task execution failed for %s", task_config.object_id.c_str());
-      continue;
+      RCLCPP_ERROR(LOGGER, "Sequential task execution failed");
+      return;
     }
     
-    RCLCPP_INFO(LOGGER, "Successfully completed task for %s", task_config.object_id.c_str());
-    rclcpp::sleep_for(std::chrono::seconds(1));
+    RCLCPP_INFO(LOGGER, "Successfully completed all sequential tasks!");
+  } else {
+    // Individual mode - separate tasks (original behavior)
+    RCLCPP_INFO(LOGGER, "Executing INDIVIDUAL pick-place for %zu objects", task_configs.size());
+    
+    for (const auto& task_config : task_configs) {
+      RCLCPP_INFO(LOGGER, "Executing task for object: %s", task_config.object_id.c_str());
+      
+      mtc::Task task = builder.buildPickPlaceTask(task_config);
+      
+      try { 
+        task.init(); 
+      }
+      catch (mtc::InitStageException& e) {
+        RCLCPP_ERROR_STREAM(LOGGER, "Task init failed for " << task_config.object_id << ": " << e); 
+        continue;
+      }
+      
+      if (!task.plan(5)) {
+        RCLCPP_ERROR(LOGGER, "Task planning failed for %s", task_config.object_id.c_str()); 
+        continue;
+      }
+      
+      task.introspection().publishSolution(*task.solutions().front());
+      auto result = task.execute(*task.solutions().front());
+      
+      if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+        RCLCPP_ERROR(LOGGER, "Task execution failed for %s", task_config.object_id.c_str());
+        continue;
+      }
+      
+      RCLCPP_INFO(LOGGER, "Successfully completed task for %s", task_config.object_id.c_str());
+      rclcpp::sleep_for(std::chrono::seconds(1));
+    }
   }
 }
 
@@ -859,7 +1006,8 @@ int main(int argc, char** argv)
   }};
 
   node->setupPlanningScene();
-  node->doMultipleTasks();
+  bool sequential = node->getNode()->get_parameter("sequential_mode").as_bool();
+  node->doMultipleTasks(sequential); // Change to false for individual tasks
 
   spin.join();
   rclcpp::shutdown();

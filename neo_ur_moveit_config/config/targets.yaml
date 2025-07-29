@@ -1,0 +1,49 @@
+objects:
+  can_1:
+    type: cylinder
+    dimensions:
+      height: 0.145
+      radius: 0.02
+    pose:
+      x: 0.7
+      y: -0.2
+      z: 0.7725
+      qw: 1.0
+      qx: 0.0
+      qy: 0.0
+      qz: 0.0
+  can_2:
+    type: cylinder
+    dimensions:
+      height: 0.145
+      radius: 0.02
+    pose:
+      x: 0.9
+      y: -0.4
+      z: 0.7725
+      qw: 1.0
+      qx: 0.0
+      qy: 0.0
+      qz: 0.0
+
+tasks:
+  - object: can_1
+    grasp_orientation: vertical
+    place_pose:
+      x: 0.8
+      y: 0.25
+      z: 0.7725
+      qw: 1.0
+      qx: 0.0
+      qy: 0.0
+      qz: 0.0
+  - object: can_2
+    grasp_orientation: vertical
+    place_pose:
+      x: 0.8
+      y: 0.10
+      z: 0.7725
+      qw: 1.0
+      qx: 0.0
+      qy: 0.0
+      qz: 0.0

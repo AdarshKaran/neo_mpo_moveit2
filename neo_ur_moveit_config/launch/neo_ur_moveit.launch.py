@@ -207,24 +207,18 @@ def launch_setup(context, *args, **kwargs):
             moveit_config.robot_description_kinematics,
             moveit_config.joint_limits,
             moveit_config.planning_pipelines,
-            {
+            {   
                 'arm_group_name': 'ur_manipulator',
                 'hand_group_name': gripper_config['hand_group'],
                 'eef_name': 'endeffector',
                 'hand_frame': gripper_config['hand_frame'],
                 
                 # Object and scene configuration
-                'target_object': 'can_1',
                 'table_reference_frame': 'base_link',
                 'table_object_name': 'simple_table',
                 
-                # Place position (inside storage bin - center of bin)
-                'place_pose_x': 0.8,
-                'place_pose_y': 0.15,
-                'place_pose_z': 0.7725,
-                
                 # Poses
-                'ready_pose': 'up',
+                'ready_pose': 'test_configuration',
                 'open_pose': gripper_config['open_pose'],
                 'close_pose': gripper_config['close_pose'],
                 
@@ -237,6 +231,12 @@ def launch_setup(context, *args, **kwargs):
                 'publish_geometry_updates': True,
                 'publish_state_updates': True,
                 'publish_transforms_updates': True,
+
+                'config_file': os.path.join(
+                    moveit_config_pkg,
+                    'config',
+                    'targets.yaml'
+                ),
             }
         ],
         output='screen',
