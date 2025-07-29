@@ -5,9 +5,11 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /MotionPlanning1
         - /Motion Planning Tasks1
         - /Motion Planning Tasks1/Robot1
         - /Motion Planning Tasks1/Scene1
+        - /Trajectory1
       Splitter Ratio: 0.4957627058029175
     Tree Height: 571
   - Class: rviz_common/Selection
@@ -42,7 +44,7 @@ Panels:
         - 270
       solutions_view_columns: ~
       tasks_view_columns:
-        - 352
+        - 324
         - 46
         - 46
         - 95
@@ -191,57 +193,57 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5base:
+          ur10base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5base_link:
+          ur10base_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5base_link_inertia:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          ur5flange:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          ur5forearm_link:
+          ur10base_link_inertia:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5ft_frame:
+          ur10flange:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5shoulder_link:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          ur5tool0:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          ur5upper_arm_link:
+          ur10forearm_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_1_link:
+          ur10ft_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          ur10shoulder_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_2_link:
+          ur10tool0:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          ur10upper_arm_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_3_link:
+          ur10wrist_1_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          ur10wrist_2_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          ur10wrist_3_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -410,57 +412,57 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5base:
+          ur10base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5base_link:
+          ur10base_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5base_link_inertia:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          ur5flange:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          ur5forearm_link:
+          ur10base_link_inertia:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5ft_frame:
+          ur10flange:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5shoulder_link:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          ur5tool0:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          ur5upper_arm_link:
+          ur10forearm_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_1_link:
+          ur10ft_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          ur10shoulder_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_2_link:
+          ur10tool0:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          ur10upper_arm_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_3_link:
+          ur10wrist_1_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          ur10wrist_2_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          ur10wrist_3_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -502,6 +504,9 @@ Visualization Manager:
       Markers:
         All at once?: false
         Value: true
+        approach_object: true
+        lift_object: true
+        retreat: true
       Name: Motion Planning Tasks
       Robot:
         Fixed Robot Color: 150; 50; 150
@@ -604,57 +609,57 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5base:
+          ur10base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5base_link:
+          ur10base_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5base_link_inertia:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          ur5flange:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          ur5forearm_link:
+          ur10base_link_inertia:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5ft_frame:
+          ur10flange:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          ur5shoulder_link:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          ur5tool0:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          ur5upper_arm_link:
+          ur10forearm_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_1_link:
+          ur10ft_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          ur10shoulder_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_2_link:
+          ur10tool0:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          ur10upper_arm_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          ur5wrist_3_link:
+          ur10wrist_1_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          ur10wrist_2_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          ur10wrist_3_link:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -685,7 +690,7 @@ Visualization Manager:
             Show Trail: false
             Value: true
         Robot Alpha: 0.5
-        Show Robot Collision: false
+        Show Robot Collision: true
         Show Robot Visual: true
         Use Fixed Robot Color: false
         Value: ""
@@ -699,10 +704,206 @@ Visualization Manager:
         Voxel Rendering: Occupied Voxels
       Show Trail: false
       State Display Time: 0.05 s
-      Task Solution Topic: /pick_place_task/solution
+      Task Solution Topic: /solution
       Tasks:
-        task pipeline: 0
+        pick_place_task: 5
       Trail Step Size: 1
+      Value: true
+    - Class: moveit_rviz_plugin/Trajectory
+      Color Enabled: false
+      Enabled: true
+      Interrupt Display: false
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        base_footprint:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        cabinet_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        caster_back_left_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        caster_back_right_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        caster_front_left_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        caster_front_right_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        lidar_1_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        lidar_2_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        neo_gripper_mount_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robotiq_85_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robotiq_85_left_finger_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robotiq_85_left_finger_tip_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robotiq_85_left_inner_knuckle_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robotiq_85_left_knuckle_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robotiq_85_right_finger_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robotiq_85_right_finger_tip_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robotiq_85_right_inner_knuckle_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robotiq_85_right_knuckle_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ur10base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        ur10base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        ur10base_link_inertia:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ur10flange:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        ur10forearm_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ur10ft_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        ur10shoulder_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ur10tool0:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        ur10upper_arm_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ur10wrist_1_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ur10wrist_2_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ur10wrist_3_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ur_to_robotiq_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel_back_left_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel_back_right_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel_front_left_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel_front_right_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+      Loop Animation: false
+      Name: Trajectory
+      Robot Alpha: 0.5
+      Robot Color: 150; 50; 150
+      Robot Description: robot_description
+      Show Robot Collision: false
+      Show Robot Visual: true
+      Show Trail: false
+      State Display Time: 3x
+      Trail Step Size: 1
+      Trajectory Topic: /display_planned_path
+      Use Sim Time: false
       Value: true
   Enabled: true
   Global Options:
@@ -784,10 +985,12 @@ Window Geometry:
     collapsed: false
   MotionPlanning - Trajectory Slider:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd00000004000000000000039b000006a6fc020000000dfb0000001200530065006c0065006300740069006f006e00000001e10000009b000000b200fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c0061007900730100000070000002ad0000018600fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb000000280020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000000000000000fb00000044004d006f00740069006f006e0050006c0061006e006e0069006e00670020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000007e00fffffffb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e00670100000329000003ed000002ca00fffffffb000000120020002d00200053006c00690064006500720000000000ffffffff0000000000000000fb0000003c004d006f00740069006f006e00200050006c0061006e006e0069006e00670020005400610073006b00730020002d00200053006c00690064006500720000000000ffffffff0000007e00ffffff0000000100000333000006a6fc0200000004fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a005600690065007700730100000070000001d70000013800fffffffb0000002a004d006f00740069006f006e00200050006c0061006e006e0069006e00670020005400610073006b00730100000253000004c3000001c100fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000004420000003efc0100000002fb0000000800540069006d00650100000000000004420000000000000000fb0000000800540069006d006501000000000000045000000000000000000000059a000006a600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd00000004000000000000039b000006a6fc020000000ffb0000001200530065006c0065006300740069006f006e00000001e10000009b000000b200fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c0061007900730100000070000002ad0000018600fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb00000044004d006f00740069006f006e0050006c0061006e006e0069006e00670020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000007e00fffffffb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e00670100000329000003ed000002ca00fffffffb000000120020002d00200053006c00690064006500720000000000ffffffff0000000000000000fb0000003c004d006f00740069006f006e00200050006c0061006e006e0069006e00670020005400610073006b00730020002d00200053006c00690064006500720000000000ffffffff0000007e00fffffffb0000003c005400720061006a006500630074006f007200790020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000000000000000fb000000280020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000000000000000fb0000003c005400720061006a006500630074006f007200790020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000007e00ffffff0000000100000333000006a6fc0200000004fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a005600690065007700730100000070000001d70000013800fffffffb0000002a004d006f00740069006f006e00200050006c0061006e006e0069006e00670020005400610073006b00730100000253000004c3000001c100fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000004420000003efc0100000002fb0000000800540069006d00650100000000000004420000000000000000fb0000000800540069006d006501000000000000045000000000000000000000059a000006a600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Tool Properties:
+    collapsed: false
+  Trajectory - Trajectory Slider:
     collapsed: false
   Views:
     collapsed: false

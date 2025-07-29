@@ -13,6 +13,30 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
+  <depend>control_msgs</depend>
+  <depend>interactive_markers</depend>
+  <depend>moveit_core</depend>
+  <depend>moveit_msgs</depend>
+  <depend>moveit_ros_planning_interface</depend>
+  <!-- <depend>moveit_servo</depend> -->
+  <depend>moveit_task_constructor_core</depend>
+  <depend>moveit_visual_tools</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>rviz_visual_tools</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>warehouse_ros_sqlite</depend>
+  <depend>geometry_msgs</depend>
+  <depend>shape_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>ros_gz_interfaces</depend>
+
+  <build_depend>Boost</build_depend>
+  <build_depend>Eigen3</build_depend>
+  <build_depend>moveit_ros_planning</build_depend>
+
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>moveit_configs_utils</exec_depend>
@@ -22,25 +46,13 @@
   <exec_depend>moveit_planners_ompl</exec_depend>
   <exec_depend>moveit_ros_move_group</exec_depend>
   <exec_depend>moveit_ros_visualization</exec_depend>
-  <exec_depend>moveit_servo</exec_depend>
   <exec_depend>moveit_simple_controller_manager</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>ur_description</exec_depend>
   <exec_depend>urdf</exec_depend>
-  <exec_depend>warehouse_ros_sqlite</exec_depend>
   <exec_depend>xacro</exec_depend>
   <exec_depend>neo_mpo_700-2</exec_depend>
   <exec_depend>neo_mpo_500-2</exec_depend>
-
-  <depend>moveit_task_constructor_core</depend>
-  <depend>moveit_task_constructor_msgs</depend>
-  <depend>moveit_ros_planning_interface</depend>
-  <depend>rclcpp_action</depend>
-  <depend>geometry_msgs</depend>
-  <depend>tf2_geometry_msgs</depend>
-  <depend>shape_msgs</depend>
-  <depend>moveit_msgs</depend>
-  <depend>control_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

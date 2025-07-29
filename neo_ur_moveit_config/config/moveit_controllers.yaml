@@ -11,6 +11,7 @@ moveit_simple_controller_manager:
   controller_names:
     - scaled_joint_trajectory_controller
     - joint_trajectory_controller
+    - dummy_gripper_controller
 
   scaled_joint_trajectory_controller:
     action_ns: follow_joint_trajectory
@@ -35,3 +36,12 @@ moveit_simple_controller_manager:
       - $(var prefix)wrist_1_joint
       - $(var prefix)wrist_2_joint
       - $(var prefix)wrist_3_joint
+
+  dummy_gripper_controller:
+    action_ns: gripper_cmd
+    type: ParallelGripperCommand
+    allow_stalling: true # optional if you want to pick grasp objects of unknown size and want the request to succeed when the gripper stalls while grasping the object
+    default: true
+    joints:
+      - robotiq_85_left_knuckle_joint
+    command_joint: robotiq_85_left_knuckle_joint

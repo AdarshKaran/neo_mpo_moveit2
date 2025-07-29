@@ -156,8 +156,8 @@ def launch_setup(context, *args, **kwargs):
         moveit_config.to_dict(),
         {
             "use_sim_time": use_sim_time,
-            "publish_robot_description": True,
-            "publish_robot_description_semantic": True,
+            "publish_robot_description": False,
+            "publish_robot_description_semantic": False,
             "publish_planning_scene": True,
         },
         move_group_capabilities
@@ -244,6 +244,15 @@ def launch_setup(context, *args, **kwargs):
         emulate_tty=True,
     )
 
+    gripper_bridge_node = Node(
+            package="neo_ur_moveit_config",
+            executable="gripper_bridge_node",
+            parameters=[{
+                "dummy_topic": "/dummy_gripper_controller/gripper_cmd",
+                # choose dynamically:
+                "real_topic" : "/robotiq_2f_85_gripper_controller/gripper_cmd"
+            }]
+    )
     # rviz with moveit configuration
     rviz_config_file = PathJoinSubstitution(
         [FindPackageShare(moveit_config_package), "rviz", "view_robot.rviz"]
@@ -276,7 +285,7 @@ def launch_setup(context, *args, **kwargs):
     handler = RegisterEventHandler(
         OnProcessExit(
             target_action=wait_robot_description,
-            on_exit=[move_group_node, rviz_node, mtc_pick_place_node],
+            on_exit=[move_group_node, rviz_node, mtc_pick_place_node, gripper_bridge_node],
         )
     )
 
