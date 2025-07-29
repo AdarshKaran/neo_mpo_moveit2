@@ -247,9 +247,14 @@ def launch_setup(context, *args, **kwargs):
             package="neo_ur_moveit_config",
             executable="gripper_bridge_node",
             parameters=[{
-                "dummy_topic": "/dummy_gripper_controller/gripper_cmd",
-                # choose dynamically:
-                "real_topic" : "/robotiq_2f_85_gripper_controller/gripper_cmd"
+                    'config_file': os.path.join(
+                    moveit_config_pkg,
+                    'config',
+                    'targets.yaml'
+                ),
+                'close_threshold': 0.15,
+                'dummy_topic': '/dummy_gripper_controller/gripper_cmd',
+                'real_topic': '/robotiq_2f_85_gripper_controller/gripper_cmd'
             }]
     )
     # rviz with moveit configuration

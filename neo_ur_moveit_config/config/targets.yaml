@@ -28,6 +28,7 @@ objects:
 
 tasks:
   - object: can_1
+    gz_link_name: body
     grasp_orientation: vertical
     place_pose:
       x: 0.8
@@ -38,6 +39,7 @@ tasks:
       qy: 0.0
       qz: 0.0
   - object: can_2
+    gz_link_name: body
     grasp_orientation: vertical
     place_pose:
       x: 0.8
