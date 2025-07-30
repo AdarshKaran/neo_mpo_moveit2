@@ -54,7 +54,7 @@ public:
   };
   struct TaskConfig {
     std::string object_id;
-    enum class Grasp { Vertical, Horizontal, TopDown } grasp;
+    enum class Grasp { Vertical, Horizontal, Both } grasp;
     double place_x{0}, place_y{0}, place_z{0}, place_qw{1}, place_qx{0}, place_qy{0}, place_qz{0};
   };
 
@@ -120,10 +120,10 @@ void loadFromNode(const rclcpp::Node::SharedPtr& node)
         TaskConfig tc;
         tc.object_id = tnode["object"].as<std::string>();
 
-        auto go = tnode["grasp_orientation"].as<std::string>();
-        if (go == "vertical")     tc.grasp = TaskConfig::Grasp::Vertical;
-        else if (go == "horizontal") tc.grasp = TaskConfig::Grasp::Horizontal;
-        else                         tc.grasp = TaskConfig::Grasp::TopDown;
+        auto grasp_orientation = tnode["grasp_orientation"].as<std::string>();
+        if (grasp_orientation == "vertical")     tc.grasp = TaskConfig::Grasp::Vertical;
+        else if (grasp_orientation == "horizontal") tc.grasp = TaskConfig::Grasp::Horizontal;
+        else                                      tc.grasp = TaskConfig::Grasp::Both;
 
         auto pp = tnode["place_pose"];
         tc.place_x  = pp["x"].as<double>();
@@ -221,6 +221,7 @@ public:
   const std::string& getHandFrame() const { return hand_frame_; }
   const std::string& getTableReferenceFrame() const { return table_reference_frame_; }
   const std::string& getReadyPose() const { return ready_pose_; }
+  const std::string& getIntermediatePose() const { return intermediate_pose_; }
   const std::string& getOpenPose() const { return open_pose_; }
   const std::string& getClosePose() const { return close_pose_; }
   rclcpp::Node::SharedPtr getNode() const { return node_; }
@@ -242,8 +243,7 @@ private:
 
   std::string arm_group_name_, hand_group_name_, eef_name_, hand_frame_;
   std::string target_object_, table_reference_frame_;
-  double place_pose_x_{}, place_pose_y_{}, place_pose_z_{};
-  std::string ready_pose_, open_pose_, close_pose_;
+  std::string ready_pose_, open_pose_, close_pose_, intermediate_pose_;
 
 };
 
@@ -257,13 +257,11 @@ MTCPickPlaceNode::MTCPickPlaceNode(const rclcpp::NodeOptions& options)
   node_->declare_parameter("arm_group_name",   "ur_manipulator");
   node_->declare_parameter("hand_group_name",  "gripper");
   node_->declare_parameter("eef_name",         "endeffector");
-  node_->declare_parameter("hand_frame",       "robotiq_85_base_link");
+  node_->declare_parameter("hand_frame",       "neo_gripper_mount_link");
   node_->declare_parameter("target_object",    "can_1");
   node_->declare_parameter("table_reference_frame", "base_link");
-  node_->declare_parameter("place_pose_x", 0.8);
-  node_->declare_parameter("place_pose_y", 0.0);
-  node_->declare_parameter("place_pose_z", 0.875);
   node_->declare_parameter("ready_pose",  "up");
+  node_->declare_parameter("intermediate_pose", "intermediate_pose");
   node_->declare_parameter("open_pose",   "open");
   node_->declare_parameter("close_pose",  "close");
 
@@ -273,10 +271,8 @@ MTCPickPlaceNode::MTCPickPlaceNode(const rclcpp::NodeOptions& options)
   hand_frame_            = node_->get_parameter("hand_frame").as_string();
   target_object_         = node_->get_parameter("target_object").as_string();
   table_reference_frame_ = node_->get_parameter("table_reference_frame").as_string();
-  place_pose_x_          = node_->get_parameter("place_pose_x").as_double();
-  place_pose_y_          = node_->get_parameter("place_pose_y").as_double();
-  place_pose_z_          = node_->get_parameter("place_pose_z").as_double();
   ready_pose_            = node_->get_parameter("ready_pose").as_string();
+  intermediate_pose_     = node_->get_parameter("intermediate_pose").as_string();
   open_pose_             = node_->get_parameter("open_pose").as_string();
   close_pose_            = node_->get_parameter("close_pose").as_string();
 
@@ -306,7 +302,7 @@ void MTCPickPlaceNode::setupPlanningScene()
   table.header.frame_id = table_reference_frame_;
   table.id = "simple_table";
   shape_msgs::msg::SolidPrimitive tbl;
-  tbl.type = tbl.BOX; tbl.dimensions = {0.8, 1.2, 0.7};
+  tbl.type = tbl.BOX; tbl.dimensions = {0.8, 2, 0.7};
   geometry_msgs::msg::Pose tbl_pose;
   tbl_pose.orientation.w = 1.0;
   tbl_pose.position.x = 0.8; tbl_pose.position.z = 0.35;
@@ -315,67 +311,57 @@ void MTCPickPlaceNode::setupPlanningScene()
   table.operation = table.ADD;
   collision_objects.push_back(table);
 
-  // Bin walls instead of single storage bin
-  // Front wall
-  moveit_msgs::msg::CollisionObject bin_front_wall;
-  bin_front_wall.header.frame_id = table_reference_frame_;
-  bin_front_wall.id = "bin_front_wall";
-  shape_msgs::msg::SolidPrimitive front_wall;
-  front_wall.type = front_wall.BOX; 
-  front_wall.dimensions = {0.6, 0.02, 0.30};
-  geometry_msgs::msg::Pose front_wall_pose;
-  front_wall_pose.orientation.w = 1.0;
-  front_wall_pose.position.x = 0.8; front_wall_pose.position.y = 0.0; front_wall_pose.position.z = 0.85;
-  bin_front_wall.primitives.push_back(front_wall);
-  bin_front_wall.primitive_poses.push_back(front_wall_pose);
-  bin_front_wall.operation = bin_front_wall.ADD;
-  collision_objects.push_back(bin_front_wall);
+  // Shelf bottom
+  moveit_msgs::msg::CollisionObject shelf_bottom;
+  shelf_bottom.header.frame_id = table_reference_frame_;
+  shelf_bottom.id = "simple_shelf_bottom";
+  shape_msgs::msg::SolidPrimitive shelf_bottom_box;
+  shelf_bottom_box.type = shelf_bottom_box.BOX;
+  shelf_bottom_box.dimensions = {0.6, 0.3, 0.2};
+  geometry_msgs::msg::Pose shelf_bottom_pose;
+  shelf_bottom_pose.orientation.w = 1.0;
+  shelf_bottom_pose.position.x = 0.8;
+  shelf_bottom_pose.position.y = 0.5;
+  shelf_bottom_pose.position.z = 0.8;
+  shelf_bottom.primitives.push_back(shelf_bottom_box);
+  shelf_bottom.primitive_poses.push_back(shelf_bottom_pose);
+  shelf_bottom.operation = shelf_bottom.ADD;
+  collision_objects.push_back(shelf_bottom);
 
-  // Back wall
-  moveit_msgs::msg::CollisionObject bin_back_wall;
-  bin_back_wall.header.frame_id = table_reference_frame_;
-  bin_back_wall.id = "bin_back_wall";
-  shape_msgs::msg::SolidPrimitive back_wall;
-  back_wall.type = back_wall.BOX; 
-  back_wall.dimensions = {0.6, 0.02, 0.30};
-  geometry_msgs::msg::Pose back_wall_pose;
-  back_wall_pose.orientation.w = 1.0;
-  back_wall_pose.position.x = 0.8; back_wall_pose.position.y = 0.30; back_wall_pose.position.z = 0.85;
-  bin_back_wall.primitives.push_back(back_wall);
-  bin_back_wall.primitive_poses.push_back(back_wall_pose);
-  bin_back_wall.operation = bin_back_wall.ADD;
-  collision_objects.push_back(bin_back_wall);
+  // Shelf top
+  moveit_msgs::msg::CollisionObject shelf_top;
+  shelf_top.header.frame_id = table_reference_frame_;
+  shelf_top.id = "simple_shelf_top";
+  shape_msgs::msg::SolidPrimitive shelf_top_box;
+  shelf_top_box.type = shelf_top_box.BOX;
+  shelf_top_box.dimensions = {0.6, 0.3, 0.2};
+  geometry_msgs::msg::Pose shelf_top_pose;
+  shelf_top_pose.orientation.w = 1.0;
+  shelf_top_pose.position.x = 0.8;
+  shelf_top_pose.position.y = 0.5;
+  shelf_top_pose.position.z = 1.25;
+  shelf_top.primitives.push_back(shelf_top_box);
+  shelf_top.primitive_poses.push_back(shelf_top_pose);
+  shelf_top.operation = shelf_top.ADD;
+  collision_objects.push_back(shelf_top);
 
-  // Left wall
-  moveit_msgs::msg::CollisionObject bin_left_wall;
-  bin_left_wall.header.frame_id = table_reference_frame_;
-  bin_left_wall.id = "bin_left_wall";
-  shape_msgs::msg::SolidPrimitive left_wall;
-  left_wall.type = left_wall.BOX; 
-  left_wall.dimensions = {0.02, 0.30, 0.30};
-  geometry_msgs::msg::Pose left_wall_pose;
-  left_wall_pose.orientation.w = 1.0;
-  left_wall_pose.position.x = 0.50; left_wall_pose.position.y = 0.15; left_wall_pose.position.z = 0.85;
-  bin_left_wall.primitives.push_back(left_wall);
-  bin_left_wall.primitive_poses.push_back(left_wall_pose);
-  bin_left_wall.operation = bin_left_wall.ADD;
-  collision_objects.push_back(bin_left_wall);
-
-  // Right wall
-  moveit_msgs::msg::CollisionObject bin_right_wall;
-  bin_right_wall.header.frame_id = table_reference_frame_;
-  bin_right_wall.id = "bin_right_wall";
-  shape_msgs::msg::SolidPrimitive right_wall;
-  right_wall.type = right_wall.BOX; 
-  right_wall.dimensions = {0.02, 0.30, 0.30};
-  geometry_msgs::msg::Pose right_wall_pose;
-  right_wall_pose.orientation.w = 1.0;
-  right_wall_pose.position.x = 1.10; right_wall_pose.position.y = 0.15; right_wall_pose.position.z = 0.85;
-  bin_right_wall.primitives.push_back(right_wall);
-  bin_right_wall.primitive_poses.push_back(right_wall_pose);
-  bin_right_wall.operation = bin_right_wall.ADD;
-  collision_objects.push_back(bin_right_wall);
-
+  // Shelf back
+  moveit_msgs::msg::CollisionObject shelf_back;
+  shelf_back.header.frame_id = table_reference_frame_;
+  shelf_back.id = "simple_shelf_back";
+  shape_msgs::msg::SolidPrimitive shelf_back_box;
+  shelf_back_box.type = shelf_back_box.BOX;
+  shelf_back_box.dimensions = {0.6, 0.02, 0.8};
+  geometry_msgs::msg::Pose shelf_back_pose;
+  shelf_back_pose.orientation.w = 1.0;
+  shelf_back_pose.position.x = 0.8;
+  shelf_back_pose.position.y = 0.65;
+  shelf_back_pose.position.z = 1.1;
+  shelf_back.primitives.push_back(shelf_back_box);
+  shelf_back.primitive_poses.push_back(shelf_back_pose);
+  shelf_back.operation = shelf_back.ADD;
+  collision_objects.push_back(shelf_back);
+  
   auto& config = ConfigurationManager::getInstance();
   for (const auto& task : config.getTasks()) {
     const auto* obj_config = config.getObject(task.object_id);
@@ -394,14 +380,17 @@ void MTCPickPlaceNode::setupPlanningScene()
 Eigen::Isometry3d MTCPickPlaceNode::graspOffset(GraspOrientation orientation) const
 {
   Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
-  if (orientation == GraspOrientation::Vertical) {
-    Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()));
+  if (orientation == GraspOrientation::Vertical) 
+  {
+    Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI/2, Eigen::Vector3d::UnitY()));
     T.linear() = q.toRotationMatrix();
-    T.translation() = Eigen::Vector3d(0, 0, 0.24); // Increased offset for better clearance
-  } else { // Horizontal
-    Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI/2, Eigen::Vector3d::UnitX()));
+    // TODO: add vertical grasp offset and horizontal grasp offset to the YAML config as params
+    T.translation() = Eigen::Vector3d(0, 0, -0.15); // offset along the local axis of the handFrame to grasp point
+  }
+  else { // Horizontal
+    Eigen::Quaterniond q(Eigen::AngleAxisd(-M_PI/2, Eigen::Vector3d::UnitY()));
     T.linear() = q.toRotationMatrix();
-    T.translation() = Eigen::Vector3d(0, 0, 0.18); // Increased offset for better clearance
+    T.translation() = Eigen::Vector3d(0, 0, 0.15);
   }
   return T;
 }
@@ -443,16 +432,18 @@ public:
 
     /* approach */
     {
-      auto stage = std::make_unique<mtc::stages::MoveRelative>("approach object", cartesian_planner);
+      // this stage reads the incoming poase and transforms it to a new goal pose in world frame, offset from the hand frame
+      auto stage = std::make_unique<mtc::stages::MoveRelative>("approach object", cartesian_planner); // Propagating stage
       stage->properties().set("marker_ns", "approach_object");
-      stage->properties().set("link", node->getHandFrame());
+      stage->properties().set("link", node->getHandFrame()); // Which link’s pose to offset
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.05, 0.20); // Increased distance for better approach
+      stage->setMinMaxDistance(0.05, 0.1); // Increased distance for better approach
 
       // Set hand approach direction - approach from the side for cylindrical objects
+      // in our code this can be specified in the YAML config
       geometry_msgs::msg::Vector3Stamped vec;
-      vec.header.frame_id = node->getHandFrame();
-      vec.vector.x = -1.0; // Approach from the side instead of from above
+      vec.header.frame_id = node->getHandFrame(); // In which frame “direction” vector is expressed
+      vec.vector.z = 1.0; // forward axis
       stage->setDirection(vec);
       grasp->insert(std::move(stage));
     }
@@ -462,20 +453,24 @@ public:
       auto grasp_fallback = std::make_unique<mtc::Fallbacks>("grasp orientation fallback");
       grasp->properties().exposeTo(grasp_fallback->properties(), { "eef", "group", "ik_frame" });
       grasp_fallback->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group", "ik_frame" });
-                                                  
-      // --- vertical grasp
+
+      // Try both grasp orientations if no orientation is specified in the YAML config
+      // Vertical grasp
+      if (grasp_type == ConfigurationManager::TaskConfig::Grasp::Vertical ||
+          grasp_type == ConfigurationManager::TaskConfig::Grasp::Both)
       {
         auto gen_vert = std::make_unique<mtc::stages::GenerateGraspPose>("generate vertical grasp");
         gen_vert->properties().configureInitFrom(mtc::Stage::PARENT);
-        gen_vert->properties().set("marker_ns", "grasp_pose");         // your original marker_ns
-        gen_vert->setPreGraspPose(node->getOpenPose());                          
-        gen_vert->setObject(target_object);                            
-        gen_vert->setAngleDelta(M_PI / 12);                            // your original angle delta
-        gen_vert->setMonitoredStage(current_state_ptr);                
+        gen_vert->properties().set("marker_ns", "grasp_pose");
+        gen_vert->setPreGraspPose(node->getOpenPose());
+        gen_vert->setObject(target_object);
+        gen_vert->setAngleDelta(M_PI / 12);
+        gen_vert->setMonitoredStage(current_state_ptr);
 
         auto ik_vert = std::make_unique<mtc::stages::ComputeIK>("vertical grasp IK", std::move(gen_vert));
         ik_vert->setMaxIKSolutions(8);
         ik_vert->setMinSolutionDistance(1.0);
+        // the offset is needed so that the hand is not inside the object, the frame in which the offset is expressed
         ik_vert->setIKFrame(node->graspOffset(GraspOrientation::Vertical), node->getHandFrame());
         ik_vert->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
         ik_vert->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
@@ -483,19 +478,22 @@ public:
         grasp_fallback->insert(std::move(ik_vert));
       }
 
-      // --- horizontal grasp
+      if (grasp_type == ConfigurationManager::TaskConfig::Grasp::Horizontal ||
+          grasp_type == ConfigurationManager::TaskConfig::Grasp::Both)
+      // Horizontal grasp
       {
         auto gen_horiz = std::make_unique<mtc::stages::GenerateGraspPose>("generate horizontal grasp");
         gen_horiz->properties().configureInitFrom(mtc::Stage::PARENT);
-        gen_horiz->properties().set("marker_ns", "grasp_pose");       // same marker_ns
+        gen_horiz->properties().set("marker_ns", "grasp_pose");
         gen_horiz->setPreGraspPose(node->getOpenPose());
         gen_horiz->setObject(target_object);
-        gen_horiz->setAngleDelta(M_PI / 12);                          // same angle delta
+        gen_horiz->setAngleDelta(M_PI / 12);
         gen_horiz->setMonitoredStage(current_state_ptr);
 
         auto ik_horiz = std::make_unique<mtc::stages::ComputeIK>("horizontal grasp IK", std::move(gen_horiz));
         ik_horiz->setMaxIKSolutions(8);
         ik_horiz->setMinSolutionDistance(1.0);
+        // the offset is needed so that the hand is not inside the object
         ik_horiz->setIKFrame(node->graspOffset(GraspOrientation::Horizontal), node->getHandFrame());
         ik_horiz->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group" });
         ik_horiz->properties().configureInitFrom(mtc::Stage::INTERFACE, { "target_pose" });
@@ -505,13 +503,6 @@ public:
 
       // insert the fallback into your pick container
       grasp->insert(std::move(grasp_fallback));
-    }
-
-    /* allow collision (object,table) */
-    {
-      auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision (object,table)");
-      stage->allowCollisions(target_object, std::vector<std::string>{"simple_table"}, true);
-      grasp->insert(std::move(stage));
     }
 
     /* allow collision (hand,object) */
@@ -546,7 +537,7 @@ public:
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.15, 0.4);  // Increased from 0.1, 0.3
+      stage->setMinMaxDistance(0.1, 0.3);  // Increased from 0.1, 0.3
       stage->setIKFrame(node->getHandFrame());
       stage->properties().set("marker_ns", "lift_object");
 
@@ -590,12 +581,33 @@ public:
     interpolation_planner->setMaxVelocityScalingFactor(0.2);
     interpolation_planner->setMaxAccelerationScalingFactor(0.2);
 
+    		/******************************************************
+  ---- *          Lower Object                              *
+		 *****************************************************/
+		{
+			auto stage = std::make_unique<mtc::stages::MoveRelative>("lower object", cartesian_planner);
+			stage->properties().set("marker_ns", "lower_object");
+			stage->properties().set("link", node->getHandFrame()); // Which link’s pose to offset
+			stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+			stage->setMinMaxDistance(.03, .13);
+
+			// Set downward direction
+			geometry_msgs::msg::Vector3Stamped vec;
+			vec.header.frame_id = node->getTableReferenceFrame();
+			vec.vector.z = -1.0;
+			stage->setDirection(vec);
+			place->insert(std::move(stage));
+		}
+
     /* ========== PLACE ORIENTATION FALLBACK ========== */
     {
       auto place_fallback = std::make_unique<mtc::Fallbacks>("place orientation fallback");
       place->properties().exposeTo(place_fallback->properties(), { "eef", "group", "ik_frame" });
       place_fallback->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group", "ik_frame" });
-                                                      
+                                    
+      // Try both grasp orientations if no orientation is specified in the YAML config
+      if (grasp_type == ConfigurationManager::TaskConfig::Grasp::Vertical ||
+          grasp_type == ConfigurationManager::TaskConfig::Grasp::Both)
       // --- vertical place
       {
         auto gen_vert = std::make_unique<mtc::stages::GeneratePlacePose>("generate vertical place pose");
@@ -607,7 +619,18 @@ public:
         target_pose.header.frame_id = node->getTableReferenceFrame();
         target_pose.pose.position.x = place_position[0];
         target_pose.pose.position.y = place_position[1];
-        target_pose.pose.position.z = place_position[2];
+        target_pose.pose.position.z = place_position[2]+0.5; // Adjusted for vertical placement
+        			// p.pose.position.z += 0.5 * params.object_dimensions[0] + params.place_surface_offset;
+
+             RCLCPP_INFO(LOGGER, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Place target pose for %s: [x: %.3f, y: %.3f, z: %.3f, qw: %.3f, qx: %.3f, qy: %.3f, qz: %.3f]",
+    target_object.c_str(),
+    target_pose.pose.position.x,
+    target_pose.pose.position.y,
+    target_pose.pose.position.z,
+    target_pose.pose.orientation.w,
+    target_pose.pose.orientation.x,
+    target_pose.pose.orientation.y,
+    target_pose.pose.orientation.z); 
         target_pose.pose.orientation.w = 1.0;
         gen_vert->setPose(target_pose);
         gen_vert->setMonitoredStage(attach_object_stage);
@@ -623,6 +646,8 @@ public:
         place_fallback->insert(std::move(ik_vert));
       }
 
+      if (grasp_type == ConfigurationManager::TaskConfig::Grasp::Horizontal ||
+        grasp_type == ConfigurationManager::TaskConfig::Grasp::Both)
       // --- horizontal place
       {
         auto gen_horiz = std::make_unique<mtc::stages::GeneratePlacePose>("generate horizontal place pose");
@@ -634,7 +659,7 @@ public:
         target_pose.header.frame_id = node->getTableReferenceFrame();
         target_pose.pose.position.x = place_position[0];
         target_pose.pose.position.y = place_position[1];
-        target_pose.pose.position.z = place_position[2] + 0.06; // Place can inside bin
+        target_pose.pose.position.z = place_position[2]+0.5;
         target_pose.pose.orientation.w = 1.0;
         gen_horiz->setPose(target_pose);
         gen_horiz->setMonitoredStage(attach_object_stage);
@@ -680,13 +705,13 @@ public:
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("retreat", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.10, 0.30);
+      stage->setMinMaxDistance(0.1, 0.3);
       stage->setIKFrame(node->getHandFrame());
       stage->properties().set("marker_ns", "retreat");
 
       geometry_msgs::msg::Vector3Stamped vec;
-      vec.header.frame_id = node->getHandFrame();
-      vec.vector.z = -0.5;
+      vec.header.frame_id = node->getHandFrame(); //retreat in world frame
+      vec.vector.x = -0.5; // upward direction
       stage->setDirection(vec);
       place->insert(std::move(stage));
     }
@@ -778,7 +803,10 @@ public:
     }
     
     // Place container (using factory)
-    std::vector<double> place_pos = {task_config.place_x, task_config.place_y, task_config.place_z};
+    std::vector<double> place_pos = {
+      task_config.place_x, task_config.place_y, task_config.place_z,
+      task_config.place_qw, task_config.place_qx, task_config.place_qy, task_config.place_qz
+    };
     auto place_container = PlaceTaskFactory::createPlaceContainer(
         node_, task_config.object_id, place_pos, 
         task_config.grasp, attach_object_stage, task);
@@ -821,8 +849,11 @@ void MTCPickPlaceNode::doMultipleTasks()
     }
     
     if (!task.plan(5)) {
-      RCLCPP_ERROR(LOGGER, "Task planning failed for %s", task_config.object_id.c_str()); 
-      continue;
+        RCLCPP_ERROR(LOGGER, "Task planning failed for %s", task_config.object_id.c_str());
+        // Publish all failed solutions for RViz introspection
+        for (const auto& sol : task.solutions())
+          task.introspection().publishSolution(*sol);
+        continue;
     }
     
     task.introspection().publishSolution(*task.solutions().front());

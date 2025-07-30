@@ -3,10 +3,10 @@ objects:
     type: cylinder
     dimensions:
       height: 0.145
-      radius: 0.02
+      radius: 0.025
     pose:
-      x: 0.7
-      y: -0.2
+      x: 0.8
+      y: 0.0
       z: 0.7725
       qw: 1.0
       qx: 0.0
@@ -16,23 +16,24 @@ objects:
     type: cylinder
     dimensions:
       height: 0.145
-      radius: 0.02
+      radius: 0.025
     pose:
-      x: 0.9
-      y: -0.4
+      x: 0.7
+      y: -0.2
       z: 0.7725
       qw: 1.0
       qx: 0.0
       qy: 0.0
       qz: 0.0
 
+# positions on the shelf x: 0.5-1.1, y: 0.50-0.60, z: 0.8 or 1.25
 tasks:
   - object: can_1
     gz_link_name: body
-    grasp_orientation: vertical
+    grasp_orientation: horizontal
     place_pose:
-      x: 0.8
-      y: 0.25
+      x: 0.9
+      y: 0.0
       z: 0.7725
       qw: 1.0
       qx: 0.0
@@ -42,8 +43,8 @@ tasks:
     gz_link_name: body
     grasp_orientation: vertical
     place_pose:
-      x: 0.8
-      y: 0.10
+      x: 0.7
+      y: -0.2
       z: 0.7725
       qw: 1.0
       qx: 0.0

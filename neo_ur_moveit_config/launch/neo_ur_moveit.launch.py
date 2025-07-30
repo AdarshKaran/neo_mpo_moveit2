@@ -160,7 +160,7 @@ def launch_setup(context, *args, **kwargs):
             "publish_robot_description_semantic": False,
             "publish_planning_scene": True,
         },
-        move_group_capabilities
+        # move_group_capabilities
         ]
     )
 
@@ -187,7 +187,7 @@ def launch_setup(context, *args, **kwargs):
             'close_pose': 'close'
         },
         '': {
-            'hand_frame': f'{prefix_str}wrist_3_link',
+            'hand_frame': f'{prefix_str}neo_gripper_mount_link',
             'hand_group': '',
             'open_pose': '',
             'close_pose': ''
@@ -211,7 +211,7 @@ def launch_setup(context, *args, **kwargs):
                 'arm_group_name': 'ur_manipulator',
                 'hand_group_name': gripper_config['hand_group'],
                 'eef_name': 'endeffector',
-                'hand_frame': gripper_config['hand_frame'],
+                'hand_frame': 'neo_gripper_mount_link',
                 
                 # Object and scene configuration
                 'table_reference_frame': 'base_link',
@@ -219,6 +219,7 @@ def launch_setup(context, *args, **kwargs):
                 
                 # Poses
                 'ready_pose': 'test_configuration',
+                'intermediate_pose': 'intermediate_pose',
                 'open_pose': gripper_config['open_pose'],
                 'close_pose': gripper_config['close_pose'],
                 
@@ -252,7 +253,7 @@ def launch_setup(context, *args, **kwargs):
                     'config',
                     'targets.yaml'
                 ),
-                'close_threshold': 0.15,
+                'close_threshold': 0.1,
                 'dummy_topic': '/dummy_gripper_controller/gripper_cmd',
                 'real_topic': '/robotiq_2f_85_gripper_controller/gripper_cmd'
             }]
