@@ -160,7 +160,7 @@ def launch_setup(context, *args, **kwargs):
             "publish_robot_description_semantic": False,
             "publish_planning_scene": True,
         },
-        # move_group_capabilities
+        move_group_capabilities
         ]
     )
 

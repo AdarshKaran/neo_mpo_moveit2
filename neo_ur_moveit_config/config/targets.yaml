@@ -3,10 +3,10 @@ objects:
     type: cylinder
     dimensions:
       height: 0.145
-      radius: 0.025
+      radius: 0.03
     pose:
       x: 0.8
-      y: 0.0
+      y: -0.5
       z: 0.7725
       qw: 1.0
       qx: 0.0
@@ -16,7 +16,7 @@ objects:
     type: cylinder
     dimensions:
       height: 0.145
-      radius: 0.025
+      radius: 0.03
     pose:
       x: 0.7
       y: -0.2
@@ -41,7 +41,7 @@ tasks:
       qz: 0.0
   - object: can_2
     gz_link_name: body
-    grasp_orientation: vertical
+    grasp_orientation: horizontal
     place_pose:
       x: 0.7
       y: -0.2

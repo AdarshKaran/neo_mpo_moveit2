@@ -536,15 +536,15 @@ public:
     /* lift */
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
-      stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.1, 0.3);  // Increased from 0.1, 0.3
-      stage->setIKFrame(node->getHandFrame());
       stage->properties().set("marker_ns", "lift_object");
+      stage->setIKFrame(node->getHandFrame());
+      stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+      stage->setMinMaxDistance(.03, .13);  // Increased from 0.1, 0.3
 
       // Set upward direction
       geometry_msgs::msg::Vector3Stamped vec;
-      vec.header.frame_id = node->getTableReferenceFrame();
-      vec.vector.z = 1.0;
+      vec.header.frame_id = node->getHandFrame();
+      vec.vector.x = -0.5; // upward direction
       stage->setDirection(vec);
       grasp->insert(std::move(stage));
     }
