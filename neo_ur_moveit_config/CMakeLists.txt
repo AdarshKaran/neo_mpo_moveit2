@@ -25,6 +25,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(shape_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(ros_gz_interfaces REQUIRED)
+find_package(neo_moveit_task_constructor REQUIRED)
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   ament_cmake
@@ -50,6 +51,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   shape_msgs
   std_msgs
   ros_gz_interfaces
+  neo_moveit_task_constructor
 )
 
 install(DIRECTORY config launch rviz srdf
@@ -59,13 +61,10 @@ install(DIRECTORY config launch rviz srdf
 ament_python_install_package(${PROJECT_NAME})
 ament_python_install_module(${PROJECT_NAME}/launch_common.py)
 
-add_executable(mtc_pick_place_node src/mtc_pick_place_node.cpp)
-ament_target_dependencies(mtc_pick_place_node ${THIS_PACKAGE_INCLUDE_DEPENDS})
-
 add_executable(gripper_bridge_node src/gripper_bridge_node.cpp)
 ament_target_dependencies(gripper_bridge_node ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
-install(TARGETS mtc_pick_place_node gripper_bridge_node
+install(TARGETS gripper_bridge_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

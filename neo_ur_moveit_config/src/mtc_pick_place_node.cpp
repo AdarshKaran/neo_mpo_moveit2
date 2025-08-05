@@ -30,8 +30,13 @@
 #include <Eigen/Geometry>
 #include <thread>
 #include <chrono>
-
+#include <fstream>
+#include <stdexcept>
 #include <yaml-cpp/yaml.h>
+
+// Custom utility for YAML pose parsing
+#include "yaml_utils.hpp"
+
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("mtc_pick_place_node");
 namespace mtc = moveit::task_constructor;
@@ -52,6 +57,7 @@ public:
     // Pose
     double x{0}, y{0}, z{0}, qw{1}, qx{0}, qy{0}, qz{0};
   };
+
   struct TaskConfig {
     std::string object_id;
     enum class Grasp { Vertical, Horizontal, Both } grasp;
@@ -66,17 +72,12 @@ public:
   ConfigurationManager(ConfigurationManager const&) = delete;
   void operator=(ConfigurationManager const&) = delete;
 
-void loadFromNode(const rclcpp::Node::SharedPtr& node)
+void loadTargetsAndTasks(const YAML::Node& root)
 {
-  node->declare_parameter("config_file", "");
-  std::string config_file = node->get_parameter("config_file").as_string();
-  if (config_file.empty()) {
-    RCLCPP_WARN(LOGGER, "No config file specified, using defaults");
-    return;
-  }
+
 
   try {
-    YAML::Node config = YAML::LoadFile(config_file);
+    const YAML::Node& config = root;
 
     // --- OBJECTS (must be a map) ---
     if (config["objects"] && config["objects"].IsMap()) {
@@ -87,28 +88,32 @@ void loadFromNode(const rclcpp::Node::SharedPtr& node)
         ObjectConfig obj;
         obj.id = id;
 
-        // type + dimensions
-        const std::string t = obj_node["type"].as<std::string>();
-        if (t == "cylinder") {
-          obj.type   = ObjectConfig::Type::Cylinder;
-          obj.height = obj_node["dimensions"]["height"].as<double>();
-          obj.radius = obj_node["dimensions"]["radius"].as<double>();
-        } else if (t == "box") {
-          obj.type   = ObjectConfig::Type::Box;
-          obj.size_x = obj_node["dimensions"]["x"].as<double>();
-          obj.size_y = obj_node["dimensions"]["y"].as<double>();
-          obj.size_z = obj_node["dimensions"]["z"].as<double>();
+        const std::string type = obj_node["type"].as<std::string>();
+        const YAML::Node  dimensions = obj_node["dimensions"];
+
+        if (type=="cylinder") {
+          obj.type = ObjectConfig::Type::Cylinder;
+          auto d = parseCylinderDims(dimensions,id);
+          obj.height = d.h;
+          obj.radius = d.r;
+
+        } else if (type=="box") {
+          obj.type = ObjectConfig::Type::Box;
+          auto d = parseBoxDims(dimensions,id);
+          obj.size_x = d.x;
+          obj.size_y = d.y;
+          obj.size_z = d.z;
+
+        } else {
+          RCLCPP_ERROR(LOGGER, "%s unknown type '%s'", id.c_str(), type.c_str());
         }
 
-        // pose
-        auto p = obj_node["pose"];
-        obj.x  = p["x"].as<double>();
-        obj.y  = p["y"].as<double>();
-        obj.z  = p["z"].as<double>();
-        obj.qw = p["qw"] ? p["qw"].as<double>() : 1.0;
-        obj.qx = p["qx"] ? p["qx"].as<double>() : 0.0;
-        obj.qy = p["qy"] ? p["qy"].as<double>() : 0.0;
-        obj.qz = p["qz"] ? p["qz"].as<double>() : 0.0;
+
+        // object pick pose
+        auto pose_node = obj_node["pose"];
+        auto p = parsePose(pose_node);
+        obj.x = p.x; obj.y = p.y; obj.z = p.z;
+        obj.qw = p.qw; obj.qx = p.qx; obj.qy = p.qy; obj.qz = p.qz;
 
         objects_[id] = obj;
       }
@@ -125,14 +130,11 @@ void loadFromNode(const rclcpp::Node::SharedPtr& node)
         else if (grasp_orientation == "horizontal") tc.grasp = TaskConfig::Grasp::Horizontal;
         else                                      tc.grasp = TaskConfig::Grasp::Both;
 
-        auto pp = tnode["place_pose"];
-        tc.place_x  = pp["x"].as<double>();
-        tc.place_y  = pp["y"].as<double>();
-        tc.place_z  = pp["z"].as<double>();
-        tc.place_qw = pp["qw"] ? pp["qw"].as<double>() : 1.0;
-        tc.place_qx = pp["qx"] ? pp["qx"].as<double>() : 0.0;
-        tc.place_qy = pp["qy"] ? pp["qy"].as<double>() : 0.0;
-        tc.place_qz = pp["qz"] ? pp["qz"].as<double>() : 0.0;
+        // object place pose
+        auto pp_node = tnode["place_pose"];
+        auto pp = parsePose(pp_node);
+        tc.place_x  = pp.x; tc.place_y  = pp.y; tc.place_z  = pp.z;
+        tc.place_qw = pp.qw; tc.place_qx = pp.qx; tc.place_qy = pp.qy; tc.place_qz = pp.qz;
 
         tasks_.push_back(tc);
       }
@@ -143,6 +145,10 @@ void loadFromNode(const rclcpp::Node::SharedPtr& node)
   catch (const std::exception& e) {
     RCLCPP_ERROR(LOGGER, "Failed to load config file: %s", e.what());
   }
+}
+void loadTargetsAndTasks(const std::string& path)
+{
+  loadTargetsAndTasks(loadYamlFileOrThrow(path));
 }
 
 
@@ -158,6 +164,100 @@ private:
   std::map<std::string, ObjectConfig>  objects_;
   std::vector<TaskConfig>              tasks_;
 };
+
+class GripperController {
+public:
+  // Compute joint goal given object size (jaw-to-jaw) [m]
+  static double calculateJointGoal(double object_size) {
+    const auto& G = ParamsManager::get().gripper;
+    double desired_opening = std::clamp(object_size + G.clearance, 0.0, G.max_opening);
+    double closure = G.max_opening - desired_opening;  
+    return (closure / G.max_opening) * G.joint_max;
+  }
+
+  // Return the joint map ready for MoveTo
+  static std::map<std::string, double> makeJointMap(double object_size) {
+    return {{ ParamsManager::get().gripper.joint_name,
+              calculateJointGoal(object_size) }};
+  }
+};
+
+/* ========================================================================== */
+/*                           PARAMS MANAGER                                   */
+/* ========================================================================== */
+class ParamsManager
+{
+public:
+  static ParamsManager& get() { static ParamsManager i; return i; }
+
+  /** Load <groups / frames / gripper / speed_scaling> from YAML */
+  void load(const std::string& path)
+  {
+    YAML::Node root = loadYamlFileOrThrow(path);
+
+    // -------------- groups / frames -----------------
+    if (root["groups"]) {
+      auto g = root["groups"];
+      if (g["arm"])  arm_group   = g["arm"].as<std::string>();
+      if (g["hand"]) hand_group  = g["hand"].as<std::string>();
+      if (g["eef"])  eef_name    = g["eef"].as<std::string>();
+    }
+    if (root["frames"]) {
+      auto f = root["frames"];
+      if (f["hand"])  ik_frame         = f["hand"].as<std::string>();
+      if (f["world"]) world_frame      = f["world"].as<std::string>();
+      if (f["table"]) table_parent     = f["table"].as<std::string>();
+    }
+
+    // -------------- SRDF group-states ---------------
+    if (root["group_states"]) {
+      auto s = root["group_states"];
+      if (s["ready"])        ready_pose        = s["ready"].as<std::string>();
+      if (s["intermediate"]) intermediate_pose = s["intermediate"].as<std::string>();
+      if (s["gripper_open"]) open_pose         = s["gripper_open"].as<std::string>();
+    }
+
+    // -------------- gripper model -------------------
+    if (root["gripper"]) {
+      auto g = root["gripper"];
+      gripper_joint_name = g["joint_name"].as<std::string>();
+      max_opening        = g["max_opening"].as<double>();
+      joint_max          = g["joint_max"].as<double>();
+    }
+
+    // -------------- speed scaling -------------------
+    if (root["speed_scaling"]) {
+      auto s = root["speed_scaling"];
+      cart_vel  = s["cartesian"]["velocity"].as<double>();
+      cart_acc  = s["cartesian"]["acceleration"].as<double>();
+      cart_step = s["cartesian"]["step"].as<double>();
+      samp_vel  = s["sampling"]["velocity"].as<double>();
+      samp_acc  = s["sampling"]["acceleration"].as<double>();
+      home_vel  = s["interpolation"]["velocity_home"].as<double>();
+      home_acc  = s["interpolation"]["acceleration_home"].as<double>();
+    }
+  }
+
+  /* trivial getters – add what you really need */
+  std::string arm_group   = "ur_manipulator";
+  std::string hand_group  = "gripper";
+  std::string eef_name    = "endeffector";
+  std::string ik_frame    = "neo_gripper_mount_link";
+  std::string world_frame = "base_link";
+  std::string table_parent= "base_link";
+
+  std::string ready_pose="up", intermediate_pose="intermediate_pose", open_pose="open";
+  std::string gripper_joint_name="robotiq_85_left_knuckle_joint";
+  double max_opening=0.085, joint_max=0.793;
+
+  double cart_vel=0.1, cart_acc=0.1, cart_step=0.01;
+  double samp_vel=0.4, samp_acc=0.4;
+  double home_vel=0.6, home_acc=0.6;
+
+private:
+  ParamsManager() = default;
+};
+
 
 /* ========================================================================== */
 /*                           OBJECT FACTORY                                  */
@@ -245,6 +345,7 @@ private:
   std::string target_object_, table_reference_frame_;
   std::string ready_pose_, open_pose_, close_pose_, intermediate_pose_;
 
+  std::string targets_file_, planning_scene_file_, mtc_params_file_;
 };
 
 /* ========================================================================== */
@@ -253,6 +354,15 @@ private:
 MTCPickPlaceNode::MTCPickPlaceNode(const rclcpp::NodeOptions& options)
   : node_{ std::make_shared<rclcpp::Node>("mtc_pick_place_node", options) }
 {
+  /* ---------- YAML file parameters ---------- */
+  node_->declare_parameter("targets_file",        "");
+  node_->declare_parameter("planning_scene_file", "");
+  node_->declare_parameter("mtc_params_file",     "");
+
+  targets_file_        = node_->get_parameter("targets_file").as_string();
+  planning_scene_file_ = node_->get_parameter("planning_scene_file").as_string();
+  mtc_params_file_     = node_->get_parameter("mtc_params_file").as_string();
+
   /* ---------------- parameters ---------------- */
   node_->declare_parameter("arm_group_name",   "ur_manipulator");
   node_->declare_parameter("hand_group_name",  "gripper");
@@ -276,6 +386,18 @@ MTCPickPlaceNode::MTCPickPlaceNode(const rclcpp::NodeOptions& options)
   open_pose_             = node_->get_parameter("open_pose").as_string();
   close_pose_            = node_->get_parameter("close_pose").as_string();
 
+  auto& P = ParamsManager::get();
+
+/* If user left the launch parameter empty, fall back to YAML values */
+if (arm_group_name_.empty())   arm_group_name_  = P.arm_group;
+if (hand_group_name_.empty())  hand_group_name_ = P.hand_group;
+if (eef_name_.empty())         eef_name_        = P.eef_name;
+if (hand_frame_.empty())       hand_frame_      = P.ik_frame;
+if (table_reference_frame_.empty()) table_reference_frame_ = P.table_parent;
+
+if (ready_pose_.empty())       ready_pose_ = P.ready_pose;
+if (open_pose_.empty())        open_pose_  = P.open_pose;
+
   RCLCPP_INFO(LOGGER, "MTC Pick Place Node Starting");
 
 }
@@ -298,81 +420,46 @@ void MTCPickPlaceNode::setupPlanningScene()
 
   std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
 
-  moveit_msgs::msg::CollisionObject table;
-  table.header.frame_id = table_reference_frame_;
-  table.id = "simple_table";
-  shape_msgs::msg::SolidPrimitive tbl;
-  tbl.type = tbl.BOX; tbl.dimensions = {0.8, 2, 0.7};
-  geometry_msgs::msg::Pose tbl_pose;
-  tbl_pose.orientation.w = 1.0;
-  tbl_pose.position.x = 0.8; tbl_pose.position.z = 0.35;
-  table.primitives.push_back(tbl);
-  table.primitive_poses.push_back(tbl_pose);
-  table.operation = table.ADD;
-  collision_objects.push_back(table);
+  if (!planning_scene_file_.empty()) {
+    YAML::Node root = loadYamlFileOrThrow(planning_scene_file_);
 
-  // Shelf bottom
-  moveit_msgs::msg::CollisionObject shelf_bottom;
-  shelf_bottom.header.frame_id = table_reference_frame_;
-  shelf_bottom.id = "simple_shelf_bottom";
-  shape_msgs::msg::SolidPrimitive shelf_bottom_box;
-  shelf_bottom_box.type = shelf_bottom_box.BOX;
-  shelf_bottom_box.dimensions = {0.6, 0.3, 0.2};
-  geometry_msgs::msg::Pose shelf_bottom_pose;
-  shelf_bottom_pose.orientation.w = 1.0;
-  shelf_bottom_pose.position.x = 0.8;
-  shelf_bottom_pose.position.y = 0.5;
-  shelf_bottom_pose.position.z = 0.8;
-  shelf_bottom.primitives.push_back(shelf_bottom_box);
-  shelf_bottom.primitive_poses.push_back(shelf_bottom_pose);
-  shelf_bottom.operation = shelf_bottom.ADD;
-  collision_objects.push_back(shelf_bottom);
+    for (const auto& n : root["collision_objects"]) {
+      moveit_msgs::msg::CollisionObject co;
+      co.header.frame_id = n["frame"].as<std::string>();
+      co.id              = n["id"].as<std::string>();
 
-  // Shelf top
-  moveit_msgs::msg::CollisionObject shelf_top;
-  shelf_top.header.frame_id = table_reference_frame_;
-  shelf_top.id = "simple_shelf_top";
-  shape_msgs::msg::SolidPrimitive shelf_top_box;
-  shelf_top_box.type = shelf_top_box.BOX;
-  shelf_top_box.dimensions = {0.6, 0.3, 0.2};
-  geometry_msgs::msg::Pose shelf_top_pose;
-  shelf_top_pose.orientation.w = 1.0;
-  shelf_top_pose.position.x = 0.8;
-  shelf_top_pose.position.y = 0.5;
-  shelf_top_pose.position.z = 1.25;
-  shelf_top.primitives.push_back(shelf_top_box);
-  shelf_top.primitive_poses.push_back(shelf_top_pose);
-  shelf_top.operation = shelf_top.ADD;
-  collision_objects.push_back(shelf_top);
+      shape_msgs::msg::SolidPrimitive prim;
+      std::string prim_type = n["primitive"].as<std::string>();
+      prim.type = (prim_type == "box") ? prim.BOX : prim.CYLINDER;
+      for (const auto& d : n["dimensions"])
+        prim.dimensions.push_back(d.as<double>());
+      co.primitives.push_back(prim);
 
-  // Shelf back
-  moveit_msgs::msg::CollisionObject shelf_back;
-  shelf_back.header.frame_id = table_reference_frame_;
-  shelf_back.id = "simple_shelf_back";
-  shape_msgs::msg::SolidPrimitive shelf_back_box;
-  shelf_back_box.type = shelf_back_box.BOX;
-  shelf_back_box.dimensions = {0.6, 0.02, 0.8};
-  geometry_msgs::msg::Pose shelf_back_pose;
-  shelf_back_pose.orientation.w = 1.0;
-  shelf_back_pose.position.x = 0.8;
-  shelf_back_pose.position.y = 0.65;
-  shelf_back_pose.position.z = 1.1;
-  shelf_back.primitives.push_back(shelf_back_box);
-  shelf_back.primitive_poses.push_back(shelf_back_pose);
-  shelf_back.operation = shelf_back.ADD;
-  collision_objects.push_back(shelf_back);
-  
-  auto& config = ConfigurationManager::getInstance();
-  for (const auto& task : config.getTasks()) {
-    const auto* obj_config = config.getObject(task.object_id);
-    if (obj_config) {
-      auto collision_obj = CollisionObjectFactory::createFromConfig(*obj_config, table_reference_frame_);
-      collision_objects.push_back(collision_obj);
+      geometry_msgs::msg::Pose pose{ };
+      auto p = parsePose(n["pose"]);
+      pose.position.x = p.x; pose.position.y = p.y; pose.position.z = p.z;
+      pose.orientation.w = p.qw; pose.orientation.x = p.qx;
+      pose.orientation.y = p.qy; pose.orientation.z = p.qz;
+      co.primitive_poses.push_back(pose);
+
+      co.operation = co.ADD;
+      collision_objects.push_back(co);
+    }
+  } else {
+    RCLCPP_WARN(LOGGER, "planning_scene_file parameter empty — no static scene objects loaded");
+  }
+
+  // also add task objects, as you already did ------------------------------
+  auto& cfg = ConfigurationManager::getInstance();
+  for (const auto& t : cfg.getTasks()) {
+    if (const auto* oc = cfg.getObject(t.object_id)) {
+      collision_objects.push_back(
+          CollisionObjectFactory::createFromConfig(*oc, table_reference_frame_));
     }
   }
-  
+
   psi.applyCollisionObjects(collision_objects);
-  RCLCPP_INFO(LOGGER, "Added %zu collision objects to planning scene", collision_objects.size());
+  RCLCPP_INFO(LOGGER, "Applied %zu collision objects", collision_objects.size());
 }
 
 /* ---------- graspOffset, allLinks--------------------------- */
@@ -420,15 +507,16 @@ public:
     task.properties().exposeTo(grasp->properties(), { "eef", "group", "ik_frame" });
     grasp->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group", "ik_frame" });
 
-    // Setup planners
+    // Setup planners with parameters from ParamsManager
+    auto& P = ParamsManager::get();
     auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
-    cartesian_planner->setMaxVelocityScalingFactor(0.1);
-    cartesian_planner->setMaxAccelerationScalingFactor(0.1);
-    cartesian_planner->setStepSize(0.01);
-    
+    cartesian_planner->setMaxVelocityScalingFactor(P.cart_vel);
+    cartesian_planner->setMaxAccelerationScalingFactor(P.cart_acc);
+    cartesian_planner->setStepSize(P.cart_step);
+
     auto interpolation_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
-    interpolation_planner->setMaxVelocityScalingFactor(0.2);
-    interpolation_planner->setMaxAccelerationScalingFactor(0.2);
+    interpolation_planner->setMaxVelocityScalingFactor(P.home_vel);
+    interpolation_planner->setMaxAccelerationScalingFactor(P.home_acc);
 
     /* approach */
     {
@@ -520,7 +608,10 @@ public:
     {
       auto stage = std::make_unique<mtc::stages::MoveTo>("close hand", interpolation_planner);
       stage->setGroup(node->getHandGroupName());
-      stage->setGoal(node->getClosePose());
+          std::map<std::string, double> joints;
+    joints["robotiq_85_left_knuckle_joint"] = 0.2;
+
+      stage->setGoal(joints);
       grasp->insert(std::move(stage));
     }
 
@@ -571,33 +662,34 @@ public:
     task.properties().exposeTo(place->properties(), { "eef", "group", "ik_frame" });
     place->properties().configureInitFrom(mtc::Stage::PARENT, { "eef", "group", "ik_frame" });
 
-    // Setup planners
+    // Setup planners with parameters from ParamsManager
+    auto& P = ParamsManager::get();
     auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
-    cartesian_planner->setMaxVelocityScalingFactor(0.1);
-    cartesian_planner->setMaxAccelerationScalingFactor(0.1);
-    cartesian_planner->setStepSize(0.01);
-    
+    cartesian_planner->setMaxVelocityScalingFactor(P.cart_vel);
+    cartesian_planner->setMaxAccelerationScalingFactor(P.cart_acc);
+    cartesian_planner->setStepSize(P.cart_step);
+
     auto interpolation_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
-    interpolation_planner->setMaxVelocityScalingFactor(0.2);
-    interpolation_planner->setMaxAccelerationScalingFactor(0.2);
+    interpolation_planner->setMaxVelocityScalingFactor(P.home_vel);
+    interpolation_planner->setMaxAccelerationScalingFactor(P.home_acc);
 
-    		/******************************************************
+        /******************************************************
   ---- *          Lower Object                              *
-		 *****************************************************/
-		{
-			auto stage = std::make_unique<mtc::stages::MoveRelative>("lower object", cartesian_planner);
-			stage->properties().set("marker_ns", "lower_object");
-			stage->properties().set("link", node->getHandFrame()); // Which link’s pose to offset
-			stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-			stage->setMinMaxDistance(.03, .13);
+     *****************************************************/
+    {
+      auto stage = std::make_unique<mtc::stages::MoveRelative>("lower object", cartesian_planner);
+      stage->properties().set("marker_ns", "lower_object");
+      stage->properties().set("link", node->getHandFrame()); // Which link’s pose to offset
+      stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+      stage->setMinMaxDistance(.03, .13);
 
-			// Set downward direction
-			geometry_msgs::msg::Vector3Stamped vec;
-			vec.header.frame_id = node->getTableReferenceFrame();
-			vec.vector.z = -1.0;
-			stage->setDirection(vec);
-			place->insert(std::move(stage));
-		}
+      // Set downward direction
+      geometry_msgs::msg::Vector3Stamped vec;
+      vec.header.frame_id = node->getTableReferenceFrame();
+      vec.vector.z = -1.0;
+      stage->setDirection(vec);
+      place->insert(std::move(stage));
+    }
 
     /* ========== PLACE ORIENTATION FALLBACK ========== */
     {
@@ -620,7 +712,7 @@ public:
         target_pose.pose.position.x = place_position[0];
         target_pose.pose.position.y = place_position[1];
         target_pose.pose.position.z = place_position[2]+0.5; // Adjusted for vertical placement
-        			// p.pose.position.z += 0.5 * params.object_dimensions[0] + params.place_surface_offset;
+              // p.pose.position.z += 0.5 * params.object_dimensions[0] + params.place_surface_offset;
 
              RCLCPP_INFO(LOGGER, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Place target pose for %s: [x: %.3f, y: %.3f, z: %.3f, qw: %.3f, qx: %.3f, qy: %.3f, qz: %.3f]",
     target_object.c_str(),
@@ -870,6 +962,31 @@ void MTCPickPlaceNode::doMultipleTasks()
 }
 
 /* ========================================================================== */
+/*                                   startup                                     */
+/* ========================================================================== */
+bool startupSequence(const std::shared_ptr<MTCPickPlaceNode>& node)
+{
+  try {
+    if (!node->targets_file_.empty())
+      ConfigurationManager::getInstance().loadTargetsAndTasks(node->targets_file_);
+    else
+      throw std::runtime_error("targets_file parameter not set");
+
+    if (!node->planning_scene_file_.empty())
+      node->setupPlanningScene();
+    else
+      RCLCPP_WARN(LOGGER, "No planning_scene_file given; static scene skipped.");
+
+    if (!node->mtc_params_file_.empty())
+      ParamsManager::get().load(node->mtc_params_file_);
+  }
+  catch (const std::exception& e) {
+    RCLCPP_FATAL(LOGGER, "Startup aborted: %s", e.what());
+    return false;
+  }
+  return true;
+}
+/* ========================================================================== */
 /*                                   main                                     */
 /* ========================================================================== */
 int main(int argc, char** argv)
@@ -880,7 +997,8 @@ int main(int argc, char** argv)
   auto node = std::make_shared<MTCPickPlaceNode>(options);
 
   // Load configuration from YAML
-  ConfigurationManager::getInstance().loadFromNode(node->getNode());
+  if (!startupSequence(node))
+    return 1; //exit node
 
   rclcpp::executors::MultiThreadedExecutor exec;
   std::thread spin{[&]() {
@@ -889,7 +1007,6 @@ int main(int argc, char** argv)
       exec.remove_node(node->getNodeBaseInterface());
   }};
 
-  node->setupPlanningScene();
   node->doMultipleTasks();
 
   spin.join();

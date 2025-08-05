@@ -160,45 +160,13 @@ def launch_setup(context, *args, **kwargs):
             "publish_robot_description_semantic": False,
             "publish_planning_scene": True,
         },
-        move_group_capabilities
+        # move_group_capabilities
         ]
     )
-
-    gripper_str = context.perform_substitution(gripper_type)
-    prefix_str = context.perform_substitution(prefix)
-    
-    gripper_configs = {
-        '2f_85': {
-            'hand_frame': 'robotiq_85_base_link',
-            'hand_group': 'gripper',
-            'open_pose': 'open',
-            'close_pose': 'close'
-        },
-        '2f_140': {
-            'hand_frame': 'robotiq_140_base_link',
-            'hand_group': 'gripper',
-            'open_pose': 'open',
-            'close_pose': 'close'
-        },
-        'epick': {
-            'hand_frame': 'robotiq_epick_base_link',
-            'hand_group': 'gripper',
-            'open_pose': 'open',
-            'close_pose': 'close'
-        },
-        '': {
-            'hand_frame': f'{prefix_str}neo_gripper_mount_link',
-            'hand_group': '',
-            'open_pose': '',
-            'close_pose': ''
-        }
-    }
-    
-    gripper_config = gripper_configs.get(gripper_str, gripper_configs[''])
     
     mtc_pick_place_node = Node(
-        package='neo_ur_moveit_config',
-        executable='mtc_pick_place_node',
+        package='neo_moveit_task_constructor',
+        executable='neo_moveit_task_constructor_node',
         name='mtc_pick_place_node',
         condition=IfCondition(LaunchConfiguration('enable_mtc')),
         parameters=[
@@ -208,36 +176,22 @@ def launch_setup(context, *args, **kwargs):
             moveit_config.joint_limits,
             moveit_config.planning_pipelines,
             {   
-                'arm_group_name': 'ur_manipulator',
-                'hand_group_name': gripper_config['hand_group'],
-                'eef_name': 'endeffector',
-                'hand_frame': 'neo_gripper_mount_link',
-                
-                # Object and scene configuration
-                'table_reference_frame': 'base_link',
-                'table_object_name': 'simple_table',
-                
-                # Poses
-                'ready_pose': 'test_configuration',
-                'intermediate_pose': 'intermediate_pose',
-                'open_pose': gripper_config['open_pose'],
-                'close_pose': gripper_config['close_pose'],
-                
-                # Additional parameters
-                'gripper_type': gripper_str,
-                'use_sim_time': use_sim_time,
-                
-                # Enable introspection
-                'publish_planning_scene': True,
-                'publish_geometry_updates': True,
-                'publish_state_updates': True,
-                'publish_transforms_updates': True,
-
-                'config_file': os.path.join(
-                    moveit_config_pkg,
-                    'config',
+                'mtc_params_file': os.path.join(
+                    get_package_share_directory('neo_moveit_task_constructor'),
+                    'configs',
+                    'mtc_params.yaml'
+                ),
+                'targets_file': os.path.join(
+                    get_package_share_directory('neo_moveit_task_constructor'),
+                    'configs',
                     'targets.yaml'
                 ),
+                'planning_scene_file': os.path.join(
+                    get_package_share_directory('neo_moveit_task_constructor'),
+                    'configs',
+                    'planning_scene.yaml'
+                ),
+                'use_sim_time': use_sim_time,
             }
         ],
         output='screen',
@@ -249,11 +203,11 @@ def launch_setup(context, *args, **kwargs):
             executable="gripper_bridge_node",
             parameters=[{
                     'config_file': os.path.join(
-                    moveit_config_pkg,
-                    'config',
+                    get_package_share_directory('neo_moveit_task_constructor'),
+                    'configs',
                     'targets.yaml'
                 ),
-                'close_threshold': 0.1,
+                'close_threshold': 0.15,
                 'dummy_topic': '/dummy_gripper_controller/gripper_cmd',
                 'real_topic': '/robotiq_2f_85_gripper_controller/gripper_cmd'
             }]

@@ -32,6 +32,8 @@
   <depend>shape_msgs</depend>
   <depend>std_msgs</depend>
   <depend>ros_gz_interfaces</depend>
+  
+  <depend>neo_moveit_task_constructor</depend>
 
   <build_depend>Boost</build_depend>
   <build_depend>Eigen3</build_depend>

@@ -21,11 +21,11 @@
     </group>
 
     <group_state name="close" group="gripper">
-      <joint name="robotiq_85_left_knuckle_joint" value="0.2" />
+      <joint name="robotiq_85_left_knuckle_joint" value="0.7929" />
     </group_state>
 
     <group_state name="open" group="gripper">
-      <joint name="robotiq_85_left_knuckle_joint" value="0.0" />
+      <joint name="robotiq_85_left_knuckle_joint" value="0.1" />
     </group_state>
 
     <end_effector name="endeffector" group="gripper" parent_link="${prefix_value}wrist_3_link"/>
